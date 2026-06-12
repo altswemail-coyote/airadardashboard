@@ -1,0 +1,460 @@
+/**
+ * Port of AIRadarLoadingScreen.tsx — full-screen and compact (modal) variants.
+ */
+
+@keyframes airadar-loading-bar {
+  0% { transform: translateX(-110%) scaleX(0.8); }
+  50% { transform: translateX(40%) scaleX(1); }
+  100% { transform: translateX(210%) scaleX(0.8); }
+}
+
+@keyframes airadar-loading-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes airadar-loading-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-6px); }
+}
+
+.airadar-loading-root {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #06111b;
+  color: #fff;
+  font-family: -apple-system, 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.airadar-loading-root--compact {
+  min-height: 320px;
+  height: 100%;
+  border-radius: 12px;
+}
+
+.airadar-loading-root--overlay {
+  min-height: 100vh;
+  border-radius: 0;
+}
+
+/* Background stack */
+.airadar-loading-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top, rgba(0, 174, 239, 0.12), transparent 34%),
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.035), transparent 22%),
+    radial-gradient(circle at 80% 30%, rgba(0, 174, 239, 0.06), transparent 18%),
+    linear-gradient(180deg, #07111a 0%, #03070c 100%);
+  pointer-events: none;
+}
+
+.airadar-loading-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.2;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 56px 56px;
+  pointer-events: none;
+}
+
+.airadar-loading-orb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.airadar-loading-orb--pulse {
+  width: 40rem;
+  height: 40rem;
+  max-width: 90vw;
+  max-height: 90vw;
+  background: rgba(34, 211, 238, 0.05);
+  filter: blur(48px);
+  animation: airadar-loading-pulse 3s ease-in-out infinite;
+}
+
+.airadar-loading-orb--ring1 {
+  width: 32rem;
+  height: 32rem;
+  max-width: 78vw;
+  max-height: 78vw;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.airadar-loading-orb--ring2 {
+  width: 26rem;
+  height: 26rem;
+  max-width: 64vw;
+  max-height: 64vw;
+  border: 1px solid rgba(103, 232, 249, 0.1);
+}
+
+.airadar-loading-root--compact .airadar-loading-orb--pulse {
+  width: 18rem;
+  height: 18rem;
+}
+.airadar-loading-root--compact .airadar-loading-orb--ring1 {
+  width: 15rem;
+  height: 15rem;
+}
+.airadar-loading-root--compact .airadar-loading-orb--ring2 {
+  width: 12rem;
+  height: 12rem;
+}
+
+.airadar-loading-inner {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  min-height: inherit;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.airadar-loading-logo-card {
+  border-radius: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 28px 32px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+.airadar-loading-root--compact .airadar-loading-logo-card {
+  padding: 18px 22px;
+  border-radius: 22px;
+}
+
+.airadar-loading-logo-img {
+  display: block;
+  width: min(420px, 72vw);
+  max-height: 120px;
+  height: auto;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 24px rgba(0, 174, 239, 0.16));
+}
+
+.airadar-loading-root--compact .airadar-loading-logo-img {
+  width: min(260px, 70vw);
+  max-height: 72px;
+}
+
+.airadar-loading-tagline {
+  margin-top: 28px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  color: rgba(165, 243, 252, 0.75);
+}
+
+.airadar-loading-root--compact .airadar-loading-tagline {
+  margin-top: 18px;
+  font-size: 11px;
+  letter-spacing: 0.28em;
+}
+
+.airadar-loading-status {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e4e4e7;
+  line-height: 1.4;
+  max-width: 36rem;
+}
+
+/* Translation overlay: keep accent/dim from legacy .tr-status / .tr-sub */
+.airadar-loading-status.tr-status {
+  color: var(--accent, #60a5fa);
+  font-weight: 700;
+}
+.airadar-loading-sub.tr-sub {
+  color: var(--dim, #71717a);
+}
+
+.airadar-loading-root--compact .airadar-loading-status {
+  font-size: 13px;
+}
+
+.airadar-loading-sub {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #a1a1aa;
+  line-height: 1.45;
+  max-width: 32rem;
+}
+
+.airadar-loading-dots {
+  margin-top: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.airadar-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(103, 232, 249, 0.95);
+  animation: airadar-loading-bounce 0.9s ease-in-out infinite;
+}
+
+.airadar-loading-dot:nth-child(1) { animation-delay: -0.2s; opacity: 0.95; }
+.airadar-loading-dot:nth-child(2) { animation-delay: -0.1s; opacity: 0.9; }
+.airadar-loading-dot:nth-child(3) { opacity: 0.8; }
+
+.airadar-loading-bar-track {
+  margin-top: 22px;
+  width: min(320px, 78vw);
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.airadar-loading-bar-fill {
+  height: 100%;
+  width: 50%;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 18px rgba(0, 174, 239, 0.6);
+  animation: airadar-loading-bar 2.2s ease-in-out infinite;
+}
+
+/* Modal / analyst: drop default brief-loading gap when using new loader */
+.modal-body .airadar-loading-root--compact,
+#disruptor-loading .airadar-loading-root--compact,
+#analyst-content .airadar-loading-root--compact {
+  min-height: 340px;
+}
+
+.t-modal-body .airadar-loading-root--compact {
+  min-height: 300px;
+  border-radius: 0;
+}
+
+.brief-loading {
+  padding: 0 !important;
+  gap: 0 !important;
+}
+
+.disruptor-loading {
+  padding: 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+}
+
+/* Translation overlay: full-bleed loader inside fixed shell */
+#tr-overlay {
+  padding: 0;
+  background: transparent;
+}
+#tr-overlay .airadar-loading-root--overlay {
+  flex: 1;
+  width: 100%;
+  align-self: stretch;
+  min-height: 100vh;
+}
+
+/* ── Compact card loaders (AIRadarCompactLoaders.tsx → vanilla; same bar keyframes as above) ── */
+.airadar-compact-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 24px;
+  border: 1px solid rgba(34, 211, 238, 0.15);
+  background: rgba(6, 18, 37, 0.95);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  font-family: -apple-system, 'Inter', system-ui, sans-serif;
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.airadar-compact-card--power {
+  max-width: min(520px, 92vw);
+  min-height: 200px;
+}
+
+.airadar-compact-card--intelligence,
+.airadar-compact-card--page {
+  max-width: min(460px, 92vw);
+  min-height: 190px;
+}
+
+.airadar-compact-card--newsletter {
+  max-width: min(520px, 92vw);
+  min-height: 200px;
+}
+
+.airadar-compact-card-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at top, rgba(0, 174, 239, 0.1), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.airadar-compact-card-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.15;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 42px 42px;
+  pointer-events: none;
+}
+
+.airadar-compact-card-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10rem;
+  height: 10rem;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(34, 211, 238, 0.08);
+  filter: blur(48px);
+  pointer-events: none;
+}
+
+.airadar-compact-card-stack {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-height: inherit;
+}
+
+.airadar-compact-card-hd {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 16px 20px;
+}
+
+.airadar-compact-card-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.airadar-compact-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 32px 24px;
+}
+
+.airadar-compact-card-logo-wrap {
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 16px 20px;
+  box-shadow: 0 0 30px rgba(0, 174, 239, 0.06);
+}
+
+.airadar-compact-card-logo {
+  display: block;
+  width: 120px;
+  height: auto;
+  opacity: 0.95;
+  filter: drop-shadow(0 0 18px rgba(0, 174, 239, 0.16));
+}
+
+.airadar-compact-card-eyebrow {
+  margin-top: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  color: rgba(165, 243, 252, 0.75);
+}
+
+.airadar-compact-card-sub {
+  margin-top: 8px;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.4;
+}
+
+.airadar-compact-card-dots {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.airadar-compact-card-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(103, 232, 249, 0.95);
+  animation: airadar-loading-bounce 0.9s ease-in-out infinite;
+}
+
+.airadar-compact-card-dot:nth-child(1) { animation-delay: -0.2s; opacity: 0.95; }
+.airadar-compact-card-dot:nth-child(2) { animation-delay: -0.1s; opacity: 0.9; }
+.airadar-compact-card-dot:nth-child(3) { opacity: 0.8; }
+
+.airadar-compact-card-bar-track {
+  margin-top: 16px;
+  width: 180px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+
+.airadar-compact-card-bar-fill {
+  height: 100%;
+  width: 50%;
+  border-radius: 999px;
+  background: #22d3ee;
+  box-shadow: 0 0 18px rgba(0, 174, 239, 0.6);
+  animation: airadar-loading-bar 2.2s ease-in-out infinite;
+}
+
+.t-brief-loading--airadar-compact {
+  padding: 16px 12px !important;
+  gap: 0 !important;
+}
+
+.brief-loading--airadar-compact {
+  padding: 16px 12px !important;
+  gap: 0 !important;
+}
+
+.t-modal-body .t-brief-loading--airadar-compact {
+  min-height: 0;
+}
+
+/* Dashboard Page Brief modal */
+#analyst-content .brief-loading--airadar-compact {
+  justify-content: center;
+  min-height: 320px;
+  box-sizing: border-box;
+}
+
+.t-pt-loading .airadar-compact-card {
+  margin-left: auto;
+  margin-right: auto;
+}

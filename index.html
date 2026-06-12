@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cognesion — AI Signal Intelligence</title>
+  <meta name="description" content="Track the AI signals that matter to your work. Get a Morning Brief with what changed, why it matters and what to do next.">
+  <script>
+    (function redirectSupabaseAuthCallback() {
+      var callbackState = window.location.search + window.location.hash;
+      if (!callbackState) return;
+      if (!/(access_token=|refresh_token=|token_hash=|type=magiclink|type=recovery|type=signup)/i.test(callbackState)) return;
+      if (window.location.pathname === '/app' || window.location.pathname === '/tracker.html') return;
+      window.location.replace('/app' + window.location.search + window.location.hash);
+    })();
+  </script>
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <div class="site-shell">
+    <header class="site-header">
+      <div class="container site-header-inner">
+        <a href="index.html" class="site-brand" aria-label="Cognesion home">
+          <img src="icons/logo-dark.svg" alt="Cognesion">
+          <span class="site-brand-note">AI Signal Intelligence</span>
+        </a>
+        <nav class="site-nav" aria-label="Primary">
+          <a class="site-nav-link" href="#product">Product</a>
+          <a class="site-nav-link" href="morning-brief.html">Morning Brief</a>
+          <a class="site-nav-link" href="pricing.html">Pricing</a>
+          <a class="site-nav-link" href="for-agencies.html">For Agencies</a>
+          <a class="button button-primary" href="pricing.html#free-plan">Start free</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <section class="page-hero">
+        <div class="container hero-grid">
+          <div>
+            <div class="eyebrow">AI Signal Intelligence</div>
+            <h1 class="hero-title">Know what changed before everyone else does.</h1>
+            <p class="hero-copy">Cognesion tracks the AI signals that matter to your work, filters the noise and shows what changed, why it matters and what to do next.</p>
+            <div class="button-row">
+              <a class="button button-primary" href="pricing.html#free-plan">Start free</a>
+              <a class="button button-secondary" href="morning-brief.html">See a sample Morning Brief</a>
+            </div>
+            <div class="proof-strip" aria-label="Proof points">
+              <span class="proof-pill">Live source monitoring</span>
+              <span class="proof-pill">Tracked topics</span>
+              <span class="proof-pill">Signal and belief shifts</span>
+              <span class="proof-pill">Action-ready Morning Brief</span>
+            </div>
+            <div class="hero-value-grid" aria-label="Core value points">
+              <article class="hero-value-card">
+                <div class="hero-value-label">Command</div>
+                <p class="hero-value-copy">Search live AI developments and rank the strongest signals fast.</p>
+              </article>
+              <article class="hero-value-card">
+                <div class="hero-value-label">Topics</div>
+                <p class="hero-value-copy">Track the themes tied to your clients, market, and workflow over time.</p>
+              </article>
+              <article class="hero-value-card">
+                <div class="hero-value-label">Brief</div>
+                <p class="hero-value-copy">Wake up to what changed, why it matters, and what to do next.</p>
+              </article>
+            </div>
+          </div>
+
+          <aside class="panel hero-card hero-proof-card" aria-label="Command preview">
+            <div class="hero-card-header">
+              <div class="hero-card-title">Command</div>
+              <div class="hero-card-badge">Live feed</div>
+            </div>
+            <div class="hero-card-meta">
+              <span>12 live signals</span>
+              <span>Selected insight</span>
+              <span>Quick scans</span>
+            </div>
+            <figure class="product-shot">
+              <div class="product-shot-frame">
+                <img src="media/marketing/command-live.png" alt="Cognesion Command workspace showing a live signal feed, selected insight, and quick scan controls.">
+              </div>
+              <figcaption class="product-shot-caption">Live Command feed from the current Cognesion beta, with active results and a populated Selected Insight panel.</figcaption>
+            </figure>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page-section" id="product">
+        <div class="container">
+          <div class="section-head">
+            <div class="section-label">Why Cognesion</div>
+            <h2 class="section-title">A decision system built for AI change.</h2>
+            <p class="section-copy">Most tools give you more content. Cognesion gives you signal. Track the companies, themes, tools, and developments tied to your work and get a clearer view of what actually moved.</p>
+          </div>
+          <div class="cards-3">
+            <article class="card">
+              <div class="card-kicker">Command</div>
+              <h3 class="card-title">Scan live AI developments fast.</h3>
+              <p class="card-copy">Use Command to search specific themes, rank the strongest signals, and surface what deserves attention now.</p>
+            </article>
+            <article class="card">
+              <div class="card-kicker">Topics</div>
+              <h3 class="card-title">Track the themes that matter over time.</h3>
+              <p class="card-copy">Monitor ongoing categories, companies and workflows. Watch signal shifts, topic health and what is heating up or cooling off.</p>
+            </article>
+            <article class="card">
+              <div class="card-kicker">Morning Brief</div>
+              <h3 class="card-title">Wake up to what changed and what to do next.</h3>
+              <p class="card-copy">Get a concise recurring brief with the strongest shifts, why they matter, and the next actions worth taking.</p>
+            </article>
+          </div>
+          <div class="product-proof-grid" aria-label="Live product views">
+            <article class="panel product-proof-panel">
+              <div class="shot-eyebrow">Command workspace</div>
+              <h3 class="card-title">A live scan surface for finding signal fast.</h3>
+              <p class="card-copy">Command gives users one place to search AI developments, run quick scans, and move from raw movement into the next signal worth reading.</p>
+              <figure class="product-shot">
+                <div class="product-shot-frame">
+                  <img src="media/marketing/command-live.png" alt="Cognesion Command workspace showing the search bar, quick scans, signal feed area, and selected insight panel.">
+                </div>
+                <figcaption class="product-shot-caption">Command is where discovery starts before users route the strongest signal into Topics or the Morning Brief.</figcaption>
+              </figure>
+            </article>
+            <article class="panel product-proof-panel">
+              <div class="shot-eyebrow">Topics workspace</div>
+              <h3 class="card-title">A live board with articles, signal shifts, and ranked beliefs.</h3>
+              <p class="card-copy">Topics turns monitoring into an ongoing workspace, with fresh articles, topic health, and belief movement across tracked boards.</p>
+              <figure class="product-shot">
+                <div class="product-shot-frame">
+                  <img src="media/marketing/topics-live.png" alt="Cognesion Topics workspace showing multiple tracked topics, article results, and ranked beliefs.">
+                </div>
+                <figcaption class="product-shot-caption">Topics keeps live scans, ranked belief movement, and board-level monitoring in one view.</figcaption>
+              </figure>
+            </article>
+            <article class="panel product-proof-panel">
+              <div class="shot-eyebrow">Morning Brief preview</div>
+              <h3 class="card-title">The paid product is visible before users upgrade.</h3>
+              <p class="card-copy">The Morning Brief shows the actual topic selection, delivery controls, and rendered output so the paid value is clear before the paywall.</p>
+              <figure class="product-shot">
+                <div class="product-shot-frame">
+                  <img src="media/marketing/morning-brief-live.png" alt="Cognesion Morning Brief modal showing selected topics, delivery settings, and the rendered brief preview.">
+                </div>
+                <figcaption class="product-shot-caption">The Morning Brief turns ongoing monitoring into a decision-ready recurring deliverable.</figcaption>
+              </figure>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section">
+        <div class="container">
+          <div class="section-head">
+            <div class="section-label">Built for</div>
+            <h2 class="section-title">For people who need signal, not more noise.</h2>
+            <p class="section-copy">If AI affects your clients, market, strategy or workflow, staying current is no longer optional. Cognesion turns recurring monitoring into a usable advantage.</p>
+          </div>
+          <div class="cards-3">
+            <article class="card">
+              <div class="card-kicker">Save hours</div>
+              <p class="card-copy">Stop checking ten sources and trying to connect the dots yourself.</p>
+            </article>
+            <article class="card">
+              <div class="card-kicker">Move sooner</div>
+              <p class="card-copy">Spot meaningful shifts early and act before competitors do.</p>
+            </article>
+            <article class="card">
+              <div class="card-kicker">Think clearer</div>
+              <p class="card-copy">See what matters, what changed, and what deserves attention now.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section">
+        <div class="container">
+          <div class="section-head">
+            <div class="section-label">How it works</div>
+            <h2 class="section-title">From live signal to next move.</h2>
+          </div>
+          <div class="steps">
+            <article class="card">
+              <div class="step-number">1</div>
+              <h3 class="step-title">Track</h3>
+              <p class="card-copy">Choose the AI companies, themes, categories, and use cases tied to your work.</p>
+            </article>
+            <article class="card">
+              <div class="step-number">2</div>
+              <h3 class="step-title">Interpret</h3>
+              <p class="card-copy">Cognesion evaluates new developments and identifies the shifts that matter.</p>
+            </article>
+            <article class="card">
+              <div class="step-number">3</div>
+              <h3 class="step-title">Act</h3>
+              <p class="card-copy">Each Morning Brief shows what changed, why it matters, and what to do next.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section">
+        <div class="container cards-2">
+          <div class="panel hero-card">
+            <div class="section-label">Morning Brief</div>
+            <h2 class="section-title">The product is the brief.</h2>
+            <p class="section-copy">Every paid account gets a Morning Brief designed for fast decision-making, not passive reading.</p>
+            <ul class="check-list">
+              <li>Top signal shifts</li>
+              <li>Why the signal moved</li>
+              <li>Belief change by topic</li>
+              <li>Recommended actions</li>
+              <li>Topics going cold</li>
+              <li>Fresh source coverage</li>
+            </ul>
+            <div class="button-row" style="margin-top:20px;">
+              <a class="button button-secondary" href="morning-brief.html">See a sample Morning Brief</a>
+            </div>
+          </div>
+          <div class="agency-banner">
+            <div class="section-label">For agencies</div>
+            <h2 class="section-title">Track markets for your clients, not just yourself.</h2>
+            <p class="section-copy">Use Cognesion to monitor client categories, emerging competitors, product shifts and AI developments that affect your accounts. Turn recurring monitoring into a repeatable client advantage.</p>
+            <ul class="check-list">
+              <li>Build client-specific topic sets</li>
+              <li>Track category movement on your chosen rhythm</li>
+              <li>Generate client-ready brief summaries</li>
+              <li>Use signal shifts to support strategy</li>
+            </ul>
+            <div class="button-row" style="margin-top:20px;">
+              <a class="button button-primary" href="for-agencies.html">Explore agency use cases</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page-section">
+        <div class="container cta-panel">
+          <div class="section-label">Pricing</div>
+          <h2 class="cta-title section-title">Start with signal, then upgrade for advantage.</h2>
+          <p class="section-copy">Start free with Command. Upgrade when you want tracked topics, flexible monitoring, and a Morning Brief delivered on the rhythm that fits your work.</p>
+          <div class="button-row">
+            <a class="button button-primary" href="pricing.html#free-plan">View pricing</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <div>Cognesion · AI Signal Intelligence · What changed. Why it matters. What to do next.</div>
+        <div class="footer-links">
+          <a href="pricing.html">Pricing</a>
+          <a href="morning-brief.html">Morning Brief</a>
+          <a href="for-agencies.html">For Agencies</a>
+        </div>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>

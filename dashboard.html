@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cognesion: Command</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="stylesheet" href="airadar-loading-screen.css">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-top">
+      <div class="logo">
+        <img src="icons/logo-dark.svg" alt="Cognesion" class="logo-wordmark">
+        <span class="ver">Command</span>
+      </div>
+
+      <div class="search-box">
+        <input type="text" id="smart-search" placeholder="Search companies, themes, tools, or AI developments" />
+      </div>
+      <button id="btn-scan" class="scan-btn">Scan</button>
+
+      <div class="header-controls">
+        <div class="export-gradient-wrap">
+          <select id="export-selector" class="header-select">
+            <option value="" disabled selected>Export</option>
+            <optgroup label="Messaging">
+              <option value="teams">Microsoft Teams</option>
+              <option value="slack">Slack</option>
+            </optgroup>
+            <optgroup label="Email">
+              <option value="outlook-web">Outlook (Web)</option>
+              <option value="gmail">Gmail</option>
+            </optgroup>
+          </select>
+        </div>
+
+        <div class="header-divider"></div>
+
+        <span class="model-label">MODEL</span>
+        <select id="llm-selector" class="model-select">
+          <option value="claude">Claude</option>
+          <option value="chatgpt">ChatGPT</option>
+          <option value="perplexity">Perplexity</option>
+          <option value="gemini">Gemini</option>
+          <option value="lechat">Mistral Le Chat</option>
+          <option value="custom">Custom URL...</option>
+        </select>
+        <input type="text" id="custom-llm-input" placeholder="https://site.com/?q=" />
+
+        <div class="header-divider"></div>
+
+        <select id="dash-language-selector" class="header-select" title="Translate headlines">
+          <option value="">English</option>
+          <option value="es">Spanish</option>
+          <option value="fr">French</option>
+          <option value="de">German</option>
+          <option value="pt">Portuguese</option>
+          <option value="it">Italian</option>
+          <option value="ja">Japanese</option>
+          <option value="zh">Chinese</option>
+          <option value="ko">Korean</option>
+          <option value="ar">Arabic</option>
+          <option value="nl">Dutch</option>
+          <option value="ru">Russian</option>
+          <option value="hi">Hindi</option>
+        </select>
+
+        <div class="header-divider"></div>
+
+        <a href="tracker.html" class="premium-nav-btn">Topics <span class="pro-pill">PRO</span></a>
+        <button id="btn-toggle-panel" class="pro-settings-btn" title="Saved Articles">★ <span id="bookmark-count">0</span></button>
+      </div>
+    </div>
+
+    <div class="chip-bar">
+      <div class="chip-bar-label">Quick scans</div>
+      <div class="chips">
+        <button class="chip active" data-q="Artificial Intelligence Trends">Top News</button>
+        <button class="chip" data-q="Generative AI">Gen AI</button>
+        <button class="chip" data-q="AI Agents">Agents</button>
+        <button class="chip" data-q="Robotics">Robotics</button>
+        <button class="chip" data-q="AI Regulation">Policy</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <div class="page-wrap">
+
+  <section class="command-stage">
+    <div class="command-stage-copy">
+      <div class="section-tag command-stage-tag">COMMAND CENTER</div>
+      <div class="command-stage-title">See what changed in AI before the day gets away from you.</div>
+      <div class="command-stage-desc">Cognesion pulls live signals into one command surface, ranks what matters, and lets you route deeper analysis straight into the model you trust.</div>
+    </div>
+    <div class="command-stage-grid">
+      <article class="command-stage-card">
+        <span class="command-stage-card-label">Discover</span>
+        <div class="command-stage-card-title">Scan the live AI landscape</div>
+        <p class="command-stage-card-copy">Use a fresh query or jump into a quick chip to pull today’s movement.</p>
+      </article>
+      <article class="command-stage-card">
+        <span class="command-stage-card-label">Interpret</span>
+        <div class="command-stage-card-title">Focus the strongest signals</div>
+        <p class="command-stage-card-copy">Select a feed item to see why it matters, what it changes, and what to do next.</p>
+      </article>
+      <article class="command-stage-card">
+        <span class="command-stage-card-label">Extend</span>
+        <div class="command-stage-card-title">Push insights into your workflow</div>
+        <p class="command-stage-card-copy">Route prompts into your chosen LLM or escalate the signal into Tracked Topics.</p>
+      </article>
+    </div>
+  </section>
+
+  <div class="container">
+
+    <!-- LEFT: UNIFIED FEED -->
+    <div class="feed">
+
+      <!-- Feed section header -->
+      <div class="feed-section-hd">
+        <div>
+          <div class="section-tag" style="margin-bottom:2px;">MONITOR</div>
+          <div id="feed-count" class="feed-section-title">Signal Feed</div>
+        </div>
+        <div class="feed-sort-tabs">
+          <button class="feed-sort-tab active" data-sort="relevant">Relevant</button>
+          <button class="feed-sort-tab" data-sort="newest">Newest</button>
+          <button class="feed-sort-tab" data-sort="confidence">Confidence</button>
+        </div>
+      </div>
+
+      <div id="feed-slot">
+        <div class="command-placeholder">
+          <div class="command-placeholder-kicker">Live signal feed</div>
+          <div class="command-placeholder-title">Your live signal starts here.</div>
+          <div class="command-placeholder-desc">Run a search or choose a quick scan to see the latest AI developments worth attention.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: SIDEBAR -->
+    <div class="sidebar">
+
+      <!-- Hidden action hooks used by existing dashboard modal flows -->
+      <div style="display:none;">
+        <button id="btn-page-brief"></button>
+        <button id="btn-countermove"></button>
+      </div>
+
+      <!-- Sidebar section header -->
+      <div class="sidebar-section-hd">
+        <div>
+          <div class="section-tag" style="margin-bottom:2px;">ANALYZE</div>
+          <div class="feed-section-title">Selected Insight</div>
+        </div>
+        <span class="insight-trend trend-up" id="sidebar-trend" style="display:none;">Upward ↑</span>
+      </div>
+
+      <!-- Selected Insight Panel -->
+      <div class="insight-panel">
+
+        <!-- Empty state -->
+        <div class="insight-empty" id="insight-empty">
+          <div class="insight-empty-icon">📡</div>
+          <div class="insight-empty-title">Select an insight to see what matters</div>
+          <div class="insight-empty-desc">Review the strongest signal, generate a deeper briefing, or turn it into a next move.</div>
+        </div>
+
+        <!-- Populated state -->
+        <div class="insight-content" id="insight-content">
+          <div class="insight-title" id="insight-title"></div>
+          <div class="insight-metrics">
+            <div class="insight-metric">
+              <div class="insight-metric-label">CONFIDENCE</div>
+              <div class="insight-metric-val" id="insight-confidence">--</div>
+            </div>
+            <div class="insight-metric-divider"></div>
+            <div class="insight-metric">
+              <div class="insight-metric-label">TIMELINE</div>
+              <div class="insight-metric-sm" id="insight-timeline">Watch window</div>
+            </div>
+          </div>
+          <div class="insight-section">
+            <div class="insight-section-label">WHY IT MATTERS</div>
+            <div class="insight-section-body" id="insight-why"></div>
+          </div>
+          <div class="insight-section">
+            <div class="insight-section-label">QUICK ACTIONS</div>
+            <div class="insight-action-items" id="insight-response"></div>
+          </div>
+          <div class="insight-toggle-row">
+            <button class="insight-toggle active" id="insight-btn-briefing">Briefing</button>
+            <button class="insight-toggle" id="insight-btn-response">Disruptor</button>
+          </div>
+          <div class="insight-section">
+            <div class="insight-section-label">TOP ACTIONS</div>
+            <div id="insight-actions"></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div><!-- /.container -->
+  </div><!-- /.page-wrap -->
+
+  <!-- Hidden stub: btn-briefing wired by dashboard.js for the Saved Articles modal -->
+  <div id="btn-briefing" style="display:none;"></div>
+
+  <!-- PAGE BRIEF MODAL -->
+  <div id="analyst-modal" class="modal-overlay">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title">Page Brief</div>
+        <button id="close-analyst" class="modal-close">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div id="analyst-content"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-copy-analysis" class="modal-btn modal-btn-secondary">Copy to Clipboard</button>
+        <button id="btn-send-to-model" class="modal-btn modal-btn-primary">Send to Model</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- COUNTERMOVE MODAL -->
+  <div id="rage-modal" class="modal-overlay">
+    <div class="modal-window" style="width:500px;">
+      <div class="modal-header">
+        <div class="modal-title">Countermove</div>
+        <button id="close-rage" class="modal-close">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="cm-desc">
+          I'll analyze current market signals to identify strategic openings. Define the players:
+        </div>
+        <div class="cm-field">
+          <div class="cm-label cm-label-you">YOUR ENTITY</div>
+          <input id="rage-attacker" class="cm-input" placeholder="e.g. My Agency, Our Brand" />
+        </div>
+        <div class="cm-field">
+          <div class="cm-label cm-label-them">THE COMPETITOR</div>
+          <input id="rage-target" class="cm-input" placeholder="e.g. Starbucks, OpenAI" />
+        </div>
+        <button id="btn-activate-rage" class="cm-launch">Analyze Countermoves</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DISRUPTOR MODAL -->
+  <div id="disruptor-modal" class="modal-overlay">
+    <div class="modal-window" style="width:680px; max-height:82vh;">
+      <div class="modal-header">
+        <div>
+          <div class="modal-title">⚡ Disruptor</div>
+          <div id="disruptor-modal-subtitle" style="font-size:10px; color:var(--dim); margin-top:3px; font-weight:500; letter-spacing:0.2px;"></div>
+        </div>
+        <button id="close-disruptor" class="modal-close">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="disruptor-loading" id="disruptor-loading"></div>
+        <div id="disruptor-content" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-copy-disruptor" class="modal-btn modal-btn-secondary">Copy to Clipboard</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HISTORY MODAL -->
+  <div id="history-modal" class="modal-overlay">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title">Missed Intelligence Reports</div>
+        <button id="close-history" class="modal-close">&#10005;</button>
+      </div>
+      <div id="history-list" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- BRIEFING MODAL -->
+  <div id="briefing-modal" class="modal-overlay">
+    <div class="modal-window">
+      <div class="modal-header">
+        <div class="modal-title">Saved Briefing Items</div>
+        <button id="close-briefing" class="modal-close">&#10005;</button>
+      </div>
+      <div id="briefing-list" class="modal-body" style="display:flex; flex-direction:column; gap:8px;"></div>
+    </div>
+  </div>
+
+  <div id="tr-overlay" aria-hidden="true"></div>
+
+  <script src="airadar-loading-screen.js"></script>
+  <script src="airadar-loading-shell-init.js"></script>
+  <script type="module" src="dashboard.js"></script>
+</body>
+</html>
