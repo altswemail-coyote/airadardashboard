@@ -2910,7 +2910,7 @@ function renderDetail(topic) {
             <button class="t-action-btn t-bst-btn" id="detail-brief-btn" data-topic="${esc(topic)}" ${s.articles?.length ? '' : 'disabled'}>
               ${tl('btn_brief')}
             </button>
-            <a class="t-action-btn t-detail-nav-btn" href="dashboard.html">${tl('btn_home')}</a>
+            <a class="t-action-btn t-detail-nav-btn" href="/">${tl('btn_home')}</a>
           </div>
           <div class="t-detail-actions-bottom">
             <button class="t-action-btn primary" data-action="open-dispatch">Preview Morning Brief</button>
@@ -4430,7 +4430,7 @@ function renderLockedState() {
         and deliver a weekday morning brief built for your role, brand, or client work.
       </div>
       <div class="t-gate-actions">
-        <a class="t-gate-btn-primary" href="dashboard.html">← Back to Command</a>
+        <a class="t-gate-btn-primary" href="/">← Back to Home</a>
         <button class="t-gate-btn-outline" disabled>Upgrade path coming soon</button>
       </div>
     </div>`;

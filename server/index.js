@@ -192,6 +192,8 @@ WEB_STATIC_FILES.forEach((file) => {
 
 app.get("/", sendPage("index.html"));
 app.get("/index.html", sendPage("index.html"));
+app.get("/dashboard", (_req, res) => res.redirect(302, "/"));
+app.get("/dashboard.html", (_req, res) => res.redirect(302, "/"));
 app.get("/app", sendPage("tracker.html"));
 app.get("/app/topics", (_req, res) => res.redirect(302, "/app"));
 app.get("/tracker", sendPage("tracker.html"));
