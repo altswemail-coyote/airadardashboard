@@ -190,8 +190,10 @@ WEB_STATIC_FILES.forEach((file) => {
   app.use(`/${file}`, express.static(path.join(ROOT_DIR, file)));
 });
 
-app.get("/", sendPage("index.html"));
+app.get("/", sendPage("dashboard.html"));
 app.get("/index.html", sendPage("index.html"));
+app.get("/marketing", sendPage("index.html"));
+app.get("/marketing.html", sendPage("index.html"));
 app.get("/command", sendPage("dashboard.html"));
 app.get("/command.html", sendPage("dashboard.html"));
 app.get("/dashboard", (_req, res) => res.redirect(302, "/command"));
