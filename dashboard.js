@@ -2,6 +2,65 @@ import { ExaEngine } from './exa-engine.js';
 import { applyUITranslations, UI_TRANSLATIONS, LANG_NAMES as I18N_LANG_NAMES, showTranslationOverlay, hideTranslationOverlay } from './i18n.js';
 import { resolveEvidenceArticlesAsync, buildBeliefAnalysisPrompt, formatAudienceProfileLines, parseStructuredAnalysis, validateStructuredAnalysis } from './belief-analysis.js';
 
+const COGNESION_RUNTIME = globalThis.COGNESION_RUNTIME || { mode: 'extension', isHttpRuntime: false, apiBaseUrl: '' };
+const WEB_RUNTIME = COGNESION_RUNTIME.mode === 'web';
+const WEB_API_BASE_URL = COGNESION_RUNTIME.apiBaseUrl || '';
+
+globalThis.COGNESION_AUTH = globalThis.COGNESION_AUTH || {};
+
+async function getRuntimeAuthHeaders() {
+  const accessTokenReader = globalThis.COGNESION_AUTH?.getAccessToken;
+  if (typeof accessTokenReader !== 'function') return {};
+
+  try {
+    const token = await accessTokenReader();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch (error) {
+    console.warn('[Command] Failed to read runtime access token:', error?.message || error);
+    return {};
+  }
+}
+
+function installWebAiProxy() {
+  if (!WEB_RUNTIME || globalThis.__cognesionCommandFetchPatched) return;
+  const nativeFetch = globalThis.fetch?.bind(globalThis);
+  if (typeof nativeFetch !== 'function') return;
+
+  globalThis.fetch = async (input, init = {}) => {
+    const url = typeof input === 'string' ? input : input?.url;
+
+    if (url === 'https://api.openai.com/v1/chat/completions') {
+      const authHeaders = await getRuntimeAuthHeaders();
+      return nativeFetch(`${WEB_API_BASE_URL}/api/ai/openai/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
+        body: init?.body
+      });
+    }
+
+    if (url === 'https://api.anthropic.com/v1/messages') {
+      const authHeaders = await getRuntimeAuthHeaders();
+      return nativeFetch(`${WEB_API_BASE_URL}/api/ai/anthropic/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders
+        },
+        body: init?.body
+      });
+    }
+
+    return nativeFetch(input, init);
+  };
+
+  globalThis.__cognesionCommandFetchPatched = true;
+}
+
+installWebAiProxy();
+
 // Returns the UI translation for `key` in the current radar language, falling back to English.
 // radarLanguage is a module-level let; safe to reference here since tl() is only called at runtime.
 function tl(key) {
@@ -1155,6 +1214,11 @@ let HARDCODED_OPENAI_KEY = null;
 let HARDCODED_ANTHROPIC_KEY = null;
 
 async function loadRuntimeApiKeys() {
+  if (WEB_RUNTIME) {
+    HARDCODED_OPENAI_KEY = '__server_proxy__';
+    HARDCODED_ANTHROPIC_KEY = '__server_proxy__';
+    return;
+  }
   if (typeof chrome === 'undefined' || !chrome.storage?.local) return;
   try {
     const stored = await chrome.storage.local.get(['openaiKey', 'openAiApiKey', 'anthropicKey']);

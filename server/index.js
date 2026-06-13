@@ -91,7 +91,7 @@ const PLAN_DEFINITIONS = [
 const RUNTIME_STATUS = {
   marketingSiteLive: true,
   extensionBetaAvailable: true,
-  webCommandLive: false,
+  webCommandLive: true,
   webTopicsLive: true,
   webTrackingLive: true,
   webAiProxyLive: true,
@@ -192,8 +192,10 @@ WEB_STATIC_FILES.forEach((file) => {
 
 app.get("/", sendPage("index.html"));
 app.get("/index.html", sendPage("index.html"));
-app.get("/dashboard", (_req, res) => res.redirect(302, "/"));
-app.get("/dashboard.html", (_req, res) => res.redirect(302, "/"));
+app.get("/command", sendPage("dashboard.html"));
+app.get("/command.html", sendPage("dashboard.html"));
+app.get("/dashboard", (_req, res) => res.redirect(302, "/command"));
+app.get("/dashboard.html", (_req, res) => res.redirect(302, "/command"));
 app.get("/app", sendPage("tracker.html"));
 app.get("/app/topics", (_req, res) => res.redirect(302, "/app"));
 app.get("/tracker", sendPage("tracker.html"));
@@ -231,10 +233,10 @@ app.get("/api/runtime-status", (req, res) => {
       webMagicLinkAuthLive: true
     },
     nextMilestones: [
-      "Migrate Command search and hydration server-side",
+      "Persist Command workspace state to account-level storage instead of browser-local memory",
       "Add Render cron jobs for tracked scans and Morning Brief delivery",
       "Wire Stripe entitlements for Scout, Signal, Operator, and Team",
-      "Migrate dashboard-only extension workflows into web-safe server routes"
+      "Move recurring brief delivery and dispatch settings into authenticated server workflows"
     ]
   });
 });
