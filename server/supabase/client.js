@@ -1,10 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 const ADMIN_BYPASS_TOKEN = trimString(process.env.ADMIN_BYPASS_TOKEN || "");
 const ADMIN_BYPASS_EMAIL = trimString(process.env.ADMIN_BYPASS_EMAIL || "").toLowerCase();
+const REALTIME_TRANSPORT =
+  typeof globalThis.WebSocket === "undefined" ? ws : globalThis.WebSocket;
 
 let cachedAdminClient = null;
 
@@ -94,6 +97,9 @@ export function createSupabaseAdminClient() {
       auth: {
         persistSession: false,
         autoRefreshToken: false
+      },
+      realtime: {
+        transport: REALTIME_TRANSPORT
       }
     });
   }
