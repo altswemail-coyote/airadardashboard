@@ -32,6 +32,7 @@ const exaEngine = process.env.EXA_API_KEY
 const WEB_STATIC_FILES = [
   "dashboard.css",
   "airadar-loading-screen.css",
+  "dashboard.js",
   "tracker.js",
   "exa-engine.js",
   "belief-analysis.js",

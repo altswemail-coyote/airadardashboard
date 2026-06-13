@@ -226,7 +226,7 @@ async function sendMagicLink(email) {
       email: normalizedEmail,
       options: {
         shouldCreateUser: true,
-        emailRedirectTo: window.location.origin
+        emailRedirectTo: `${window.location.origin}/app`
       }
     });
 
