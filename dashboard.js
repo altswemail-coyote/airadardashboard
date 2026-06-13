@@ -53,8 +53,8 @@ function renderAuthGate(message = 'Sign in with the same email magic link you us
       </form>
       <div class="${noteClass}">${esc(note)}</div>
       <div class="command-auth-actions">
-        <a class="command-auth-link" href="dashboard.html">Home</a>
-        <a class="command-auth-link" href="tracker.html">Open Topics</a>
+        <a class="command-auth-link" href="/command">Home</a>
+        <a class="command-auth-link" href="/app">Open Topics</a>
       </div>
     </div>`;
 
