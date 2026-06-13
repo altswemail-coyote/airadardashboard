@@ -22,6 +22,7 @@ const app = express();
 const PORT = process.env.PORT || 8787;
 const APP_BASE_URL = process.env.APP_BASE_URL || "";
 const COGNESION_ENV = process.env.COGNESION_ENV || "development";
+const BUILD_STAMP = "2026-06-13-command-home-feed";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -236,6 +237,7 @@ app.get("/api/runtime-status", (req, res) => {
   res.json({
     ok: true,
     product: "Cognesion",
+    buildStamp: BUILD_STAMP,
     baseUrl: requestBaseUrl(req),
     supabase: getSupabaseConfigStatus(),
     runtime: {
