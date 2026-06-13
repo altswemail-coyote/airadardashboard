@@ -12,6 +12,7 @@ import {
   getSupabaseBrowserConfig,
   getSupabaseConfigStatus,
   listTopicBoards,
+  resolveAdminBypassUser,
   resolveAuthenticatedUser,
   updateTopic,
   updateTopicBoard
@@ -115,7 +116,15 @@ function readBearerToken(req) {
   return match ? match[1].trim() : "";
 }
 
+function readAdminBypassToken(req) {
+  return String(req.get("x-cognesion-admin-bypass") || "").trim();
+}
+
 async function requireAuthenticatedUser(req) {
+  const adminBypassToken = readAdminBypassToken(req);
+  if (adminBypassToken) {
+    return resolveAdminBypassUser(adminBypassToken);
+  }
   return resolveAuthenticatedUser(readBearerToken(req));
 }
 
@@ -177,7 +186,7 @@ app.disable("x-powered-by");
 app.use(cors());
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, x-cognesion-admin-bypass");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   if (req.method === "OPTIONS") return res.status(204).end();
   return next();
@@ -233,7 +242,8 @@ app.get("/api/runtime-status", (req, res) => {
       ...RUNTIME_STATUS,
       webTopicsApiLive: true,
       developmentAuthBridge: false,
-      webMagicLinkAuthLive: true
+      webMagicLinkAuthLive: true,
+      adminBypassConfigured: Boolean(process.env.ADMIN_BYPASS_TOKEN && process.env.ADMIN_BYPASS_EMAIL)
     },
     nextMilestones: [
       "Persist Command workspace state to account-level storage instead of browser-local memory",
@@ -259,6 +269,15 @@ app.get("/api/auth/config", (_req, res) => {
     supabase
   });
 });
+
+app.get("/api/auth/session", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  return res.json({
+    ok: true,
+    authMode: user.authMode || "supabase-session",
+    user
+  });
+}));
 
 app.get("/api/plans", (_req, res) => {
   res.json({
@@ -418,7 +437,7 @@ app.get("/api/topics", asyncRoute(async (req, res) => {
   const result = await listTopicBoards(user);
   res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     boards: result.boards
   });
@@ -430,7 +449,7 @@ app.post("/api/topics", asyncRoute(async (req, res) => {
   const result = await createTopic(user, { boardId, query });
   res.status(201).json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     topic: result.topic
   });
@@ -445,7 +464,7 @@ app.patch("/api/topics/:topicId", asyncRoute(async (req, res) => {
 
   return res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     topic: result.topic
   });
@@ -460,7 +479,7 @@ app.delete("/api/topics/:topicId", asyncRoute(async (req, res) => {
 
   return res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     deletedTopicId: result.deletedTopicId
   });
@@ -471,7 +490,7 @@ app.get("/api/topic-boards", asyncRoute(async (req, res) => {
   const result = await listTopicBoards(user);
   res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     boards: result.boards
   });
@@ -483,7 +502,7 @@ app.post("/api/topic-boards", asyncRoute(async (req, res) => {
   const result = await createTopicBoard(user, { name, originType, profileSnapshot });
   res.status(201).json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     board: result.board
   });
@@ -498,7 +517,7 @@ app.patch("/api/topic-boards/:boardId", asyncRoute(async (req, res) => {
 
   return res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     board: result.board
   });
@@ -513,7 +532,7 @@ app.delete("/api/topic-boards/:boardId", asyncRoute(async (req, res) => {
 
   return res.json({
     ok: true,
-    authMode: "supabase-session",
+    authMode: user.authMode || "supabase-session",
     user: result.user,
     deletedBoardId: result.deletedBoardId,
     boards: result.boards

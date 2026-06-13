@@ -27,8 +27,80 @@ const AUTH_STATE = {
   note: '',
   initialized: false
 };
+const ADMIN_BYPASS_STORAGE_KEY = 'cognesionAdminBypassToken';
 
 globalThis.COGNESION_AUTH = globalThis.COGNESION_AUTH || {};
+
+function readStoredAdminBypassToken() {
+  try {
+    return String(globalThis.localStorage?.getItem(ADMIN_BYPASS_STORAGE_KEY) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function persistAdminBypassToken(token) {
+  const normalized = String(token || '').trim();
+  try {
+    if (normalized) {
+      globalThis.localStorage?.setItem(ADMIN_BYPASS_STORAGE_KEY, normalized);
+    } else {
+      globalThis.localStorage?.removeItem(ADMIN_BYPASS_STORAGE_KEY);
+    }
+  } catch {
+    // Ignore localStorage failures and let the normal auth flow continue.
+  }
+}
+
+function clearStoredAdminBypassToken() {
+  persistAdminBypassToken('');
+}
+
+function readAdminBypassTokenFromLocation() {
+  if (typeof window === 'undefined') return '';
+
+  try {
+    const url = new URL(window.location.href);
+    const searchToken = url.searchParams.get('admin_bypass');
+    if (searchToken) return String(searchToken).trim();
+
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    if (!hash || !hash.includes('admin_bypass=')) return '';
+
+    return String(new URLSearchParams(hash).get('admin_bypass') || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function stripAdminBypassTokenFromLocation() {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('admin_bypass');
+
+    const hash = String(window.location.hash || '').replace(/^#/, '');
+    if (hash.includes('admin_bypass=')) {
+      const hashParams = new URLSearchParams(hash);
+      hashParams.delete('admin_bypass');
+      const nextHash = hashParams.toString();
+      url.hash = nextHash ? `#${nextHash}` : '';
+    }
+
+    window.history.replaceState({}, document.title, url.toString());
+  } catch {
+    // Ignore history replacement issues.
+  }
+}
+
+function captureAdminBypassTokenFromLocation() {
+  const token = readAdminBypassTokenFromLocation();
+  if (!token) return readStoredAdminBypassToken();
+  persistAdminBypassToken(token);
+  stripAdminBypassTokenFromLocation();
+  return token;
+}
 
 function getAuthShellEl() {
   return document.getElementById('t-auth-shell');
@@ -40,12 +112,19 @@ function getAuthGateEl() {
 
 function buildAuthShellHtml() {
   if (AUTH_STATE.session?.user?.email) {
+    const statusValue = AUTH_STATE.session?.adminBypass ? 'Admin Test Access' : 'Workspace Synced';
+    const statusLabel = AUTH_STATE.session?.adminBypass
+      ? `Admin pressure-test access is active for ${AUTH_STATE.session.user.email}. Topics stay unlocked on this browser until you clear this session.`
+      : `Signed in as ${AUTH_STATE.session.user.email}. Your boards and tracked topics now follow your account instead of this browser only.`;
+    const statePill = AUTH_STATE.session?.adminBypass ? 'Admin access' : 'Signed in';
+    const signOutLabel = AUTH_STATE.session?.adminBypass ? 'Clear access' : 'Sign out';
+
     return `
-      <span class="t-top-bar-status-value">Workspace Synced</span>
-      <span class="t-top-bar-status-label">Signed in as ${esc(AUTH_STATE.session.user.email)}. Your boards and tracked topics now follow your account instead of this browser only.</span>
+      <span class="t-top-bar-status-value">${esc(statusValue)}</span>
+      <span class="t-top-bar-status-label">${esc(statusLabel)}</span>
       <div class="t-auth-inline-subactions">
-        <span class="t-auth-state-pill">Signed in</span>
-        <button type="button" class="t-auth-inline-link" id="t-auth-signout">Sign out</button>
+        <span class="t-auth-state-pill">${esc(statePill)}</span>
+        <button type="button" class="t-auth-inline-link" id="t-auth-signout">${esc(signOutLabel)}</button>
       </div>
     `;
   }
@@ -190,6 +269,7 @@ async function ensureWebAuthClient() {
 
 async function getAccessToken() {
   if (!WEB_RUNTIME) return null;
+  if (AUTH_STATE.session?.adminBypass) return null;
   if (AUTH_STATE.session?.access_token) return AUTH_STATE.session.access_token;
   const client = await ensureWebAuthClient();
   const { data } = await client.auth.getSession();
@@ -201,9 +281,16 @@ globalThis.COGNESION_AUTH.getAccessToken = getAccessToken;
 
 async function getAuthHeaders() {
   if (!WEB_RUNTIME) return {};
+  const adminBypassToken = readStoredAdminBypassToken();
+  if (adminBypassToken) {
+    return { 'x-cognesion-admin-bypass': adminBypassToken };
+  }
   const token = await getAccessToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
+
+globalThis.COGNESION_AUTH.getAuthHeaders = getAuthHeaders;
+globalThis.COGNESION_AUTH.clearAdminBypass = clearStoredAdminBypassToken;
 
 async function sendMagicLink(email) {
   const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -243,6 +330,13 @@ async function sendMagicLink(email) {
 }
 
 async function signOutWebUser() {
+  if (AUTH_STATE.session?.adminBypass) {
+    clearStoredAdminBypassToken();
+    AUTH_STATE.session = null;
+    window.location.reload();
+    return;
+  }
+
   try {
     const client = await ensureWebAuthClient();
     await client.auth.signOut();
@@ -261,6 +355,40 @@ async function hydrateSessionFromBrowser() {
   return client;
 }
 
+async function hydrateAdminBypassSession() {
+  if (!WEB_RUNTIME) return false;
+
+  const adminBypassToken = captureAdminBypassTokenFromLocation() || readStoredAdminBypassToken();
+  if (!adminBypassToken) return false;
+
+  try {
+    const response = await fetch(`${WEB_API_BASE_URL}/api/auth/session`, {
+      headers: {
+        'x-cognesion-admin-bypass': adminBypassToken
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok || payload?.ok === false || !payload?.user?.email) {
+      throw new Error(payload?.error || 'Admin pressure-test access is not available right now.');
+    }
+
+    AUTH_STATE.session = {
+      user: payload.user,
+      adminBypass: true
+    };
+    AUTH_STATE.error = '';
+    AUTH_STATE.note = `Admin pressure-test access active for ${payload.user.email}.`;
+    renderAuthShell();
+    return true;
+  } catch (error) {
+    clearStoredAdminBypassToken();
+    AUTH_STATE.session = null;
+    AUTH_STATE.error = error?.message || 'Admin pressure-test access could not be validated.';
+    return false;
+  }
+}
+
 async function bootWebAuth() {
   AUTH_STATE.error = '';
   AUTH_STATE.note = 'Use the email magic link to unlock Topics on the web. Password setup can come later.';
@@ -268,6 +396,16 @@ async function bootWebAuth() {
   renderAuthGate();
 
   try {
+    const bypassActive = await hydrateAdminBypassSession();
+    if (bypassActive) {
+      clearAuthGate();
+      if (!AUTH_STATE.initialized) {
+        AUTH_STATE.initialized = true;
+        init();
+      }
+      return;
+    }
+
     const client = await hydrateSessionFromBrowser();
 
     client.auth.onAuthStateChange((_event, session) => {

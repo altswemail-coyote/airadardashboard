@@ -14,6 +14,16 @@ async function getExaApiKey(explicitKey = null) {
 }
 
 async function getRuntimeAuthHeaders() {
+  const authHeaderReader = globalThis.COGNESION_AUTH?.getAuthHeaders;
+  if (typeof authHeaderReader === "function") {
+    try {
+      return await authHeaderReader();
+    } catch (error) {
+      console.warn("[ExaEngine] Failed to read runtime auth headers:", error?.message || error);
+      return {};
+    }
+  }
+
   const accessTokenReader = globalThis.COGNESION_AUTH?.getAccessToken;
   if (typeof accessTokenReader !== "function") return {};
 

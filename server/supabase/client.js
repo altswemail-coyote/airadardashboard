@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 const SUPABASE_URL = process.env.SUPABASE_URL || "";
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || "";
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const ADMIN_BYPASS_TOKEN = trimString(process.env.ADMIN_BYPASS_TOKEN || "");
+const ADMIN_BYPASS_EMAIL = trimString(process.env.ADMIN_BYPASS_EMAIL || "").toLowerCase();
 
 let cachedAdminClient = null;
 
@@ -105,6 +107,20 @@ function authRequiredError(message = "Authentication required.") {
   return error;
 }
 
+function configurationError(message) {
+  const error = new Error(message);
+  error.status = 503;
+  return error;
+}
+
+function attachAuthMode(user, authMode) {
+  return {
+    ...user,
+    authMode,
+    isAdminBypass: authMode === "admin-bypass"
+  };
+}
+
 async function ensureUserProvisioned(user) {
   const supabase = createSupabaseAdminClient();
   if (!supabase) {
@@ -164,7 +180,84 @@ export async function resolveAuthenticatedUser(accessToken) {
     throw authRequiredError("Your session is missing or expired. Please sign in again.");
   }
 
-  return ensureUserProvisioned(userQuery.data.user);
+  return attachAuthMode(await ensureUserProvisioned(userQuery.data.user), "supabase-session");
+}
+
+async function findAuthUserByEmail(email) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  let page = 1;
+  while (page <= 10) {
+    const userList = await supabase.auth.admin.listUsers({ page, perPage: 200 });
+    if (userList.error) {
+      throw new Error(`Unable to inspect auth users: ${userList.error.message}`);
+    }
+
+    const users = Array.isArray(userList.data?.users) ? userList.data.users : [];
+    const match = users.find((candidate) => trimString(candidate?.email).toLowerCase() === email);
+    if (match) return match;
+
+    if (!users.length || !userList.data?.nextPage || userList.data.nextPage === page) break;
+    page = userList.data.nextPage;
+  }
+
+  return null;
+}
+
+function buildAdminBypassPassword() {
+  return `CognesionAdmin!${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
+async function ensureAdminBypassUser() {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  if (!ADMIN_BYPASS_EMAIL) {
+    throw configurationError("ADMIN_BYPASS_EMAIL is not configured on the server.");
+  }
+
+  const existingUser = await findAuthUserByEmail(ADMIN_BYPASS_EMAIL);
+  if (existingUser) {
+    return attachAuthMode(await ensureUserProvisioned(existingUser), "admin-bypass");
+  }
+
+  const createdUser = await supabase.auth.admin.createUser({
+    email: ADMIN_BYPASS_EMAIL,
+    password: buildAdminBypassPassword(),
+    email_confirm: true,
+    user_metadata: {
+      source: "render-admin-bypass",
+      role: "admin-pressure-test"
+    }
+  });
+
+  if (createdUser.error || !createdUser.data?.user) {
+    throw new Error(`Unable to create admin bypass user: ${createdUser.error?.message || "Unknown error"}`);
+  }
+
+  return attachAuthMode(await ensureUserProvisioned(createdUser.data.user), "admin-bypass");
+}
+
+export async function resolveAdminBypassUser(adminBypassToken) {
+  const token = trimString(adminBypassToken);
+  if (!token) {
+    throw authRequiredError("Admin bypass token is missing.");
+  }
+
+  if (!ADMIN_BYPASS_TOKEN || !ADMIN_BYPASS_EMAIL) {
+    throw configurationError("Admin bypass is not configured on the server.");
+  }
+
+  if (token !== ADMIN_BYPASS_TOKEN) {
+    throw authRequiredError("Admin bypass token is invalid.");
+  }
+
+  return ensureAdminBypassUser();
 }
 
 async function ensureDefaultBoard(userId) {

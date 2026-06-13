@@ -13,6 +13,10 @@ services:
         value: production
       - key: APP_BASE_URL
         sync: false
+      - key: ADMIN_BYPASS_TOKEN
+        sync: false
+      - key: ADMIN_BYPASS_EMAIL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
