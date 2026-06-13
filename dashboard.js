@@ -10,6 +10,7 @@ const AUTH_STATE = {
   config: null,
   session: null,
   pendingEmail: '',
+  adminBypassDraft: '',
   busy: false,
   error: '',
   note: '',
@@ -124,6 +125,23 @@ function renderAuthGate(message = 'Sign in with the same email magic link you us
         </button>
       </form>
       <div class="${noteClass}">${esc(note)}</div>
+      <div class="command-auth-divider"><span>or</span></div>
+      <div class="command-auth-admin-label">Admin pressure-test portal</div>
+      <form class="command-auth-form command-auth-form-admin" id="command-admin-form">
+        <input
+          id="command-admin-token"
+          class="command-auth-input"
+          type="text"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          placeholder="Paste admin test token"
+          value="${esc(AUTH_STATE.adminBypassDraft || readStoredAdminBypassToken())}"
+        />
+        <button type="submit" class="command-auth-button command-auth-button-secondary" ${AUTH_STATE.busy ? 'disabled' : ''}>
+          ${AUTH_STATE.busy ? 'Unlocking…' : 'Unlock now'}
+        </button>
+      </form>
       <div class="command-auth-actions">
         <a class="command-auth-link" href="/command">Home</a>
         <a class="command-auth-link" href="/app">Open Topics</a>
@@ -134,6 +152,12 @@ function renderAuthGate(message = 'Sign in with the same email magic link you us
     event.preventDefault();
     const email = gate.querySelector('#command-auth-email')?.value?.trim() || '';
     await sendMagicLink(email);
+  });
+
+  gate.querySelector('#command-admin-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const token = gate.querySelector('#command-admin-token')?.value?.trim() || '';
+    await activateAdminBypass(token);
   });
 }
 
@@ -213,6 +237,39 @@ async function getAuthHeaders() {
 
 globalThis.COGNESION_AUTH.getAuthHeaders = getAuthHeaders;
 globalThis.COGNESION_AUTH.clearAdminBypass = clearStoredAdminBypassToken;
+
+async function activateAdminBypass(token) {
+  const normalizedToken = String(token || '').trim();
+  AUTH_STATE.adminBypassDraft = normalizedToken;
+
+  if (!normalizedToken) {
+    AUTH_STATE.error = 'Paste the admin pressure-test token to unlock Command.';
+    AUTH_STATE.note = '';
+    renderAuthGate();
+    return false;
+  }
+
+  AUTH_STATE.busy = true;
+  AUTH_STATE.error = '';
+  AUTH_STATE.note = 'Validating admin pressure-test access…';
+  persistAdminBypassToken(normalizedToken);
+  renderAuthGate();
+
+  const unlocked = await hydrateAdminBypassSession();
+  AUTH_STATE.busy = false;
+
+  if (!unlocked) {
+    renderAuthGate();
+    return false;
+  }
+
+  clearAuthGate();
+  if (!AUTH_STATE.initialized) {
+    AUTH_STATE.initialized = true;
+    await init();
+  }
+  return true;
+}
 
 async function sendMagicLink(email) {
   const normalizedEmail = String(email || '').trim().toLowerCase();

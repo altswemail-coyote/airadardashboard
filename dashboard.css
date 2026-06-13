@@ -130,6 +130,13 @@ a { text-decoration: none; color: inherit; }
   box-shadow: 0 10px 30px rgba(59, 130, 246, 0.28);
 }
 
+.command-auth-button-secondary {
+  background: rgba(15, 23, 42, 0.92);
+  border-color: rgba(96, 165, 250, 0.24);
+  color: #dbeafe;
+  box-shadow: none;
+}
+
 .command-auth-button:hover,
 .command-auth-link:hover {
   transform: translateY(-1px);
@@ -149,6 +156,39 @@ a { text-decoration: none; color: inherit; }
 
 .command-auth-note.is-error {
   color: #fca5a5;
+}
+
+.command-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 12px;
+  color: rgba(148, 163, 184, 0.72);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.command-auth-divider::before,
+.command-auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.command-auth-admin-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(96, 165, 250, 0.82);
+  margin-bottom: 10px;
+}
+
+.command-auth-form-admin {
+  margin-bottom: 0;
 }
 
 .command-auth-actions {

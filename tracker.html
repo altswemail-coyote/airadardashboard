@@ -1382,6 +1382,36 @@
     .t-gate-desc {
       font-size: 13px; color: var(--dim); line-height: 1.6; margin-bottom: 28px;
     }
+    .t-gate-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 12px;
+      color: rgba(148,163,184,0.68);
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }
+    .t-gate-divider::before,
+    .t-gate-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: rgba(148,163,184,0.14);
+    }
+    .t-gate-admin-label {
+      font-size: 9px;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    .t-gate-admin-form {
+      display: flex;
+      gap: 10px;
+    }
     .t-gate-actions { display: flex; flex-direction: column; gap: 10px; }
     .t-gate-btn-primary {
       font-size: 12px; font-weight: 800; padding: 10px 20px;
@@ -1391,6 +1421,16 @@
       box-shadow: var(--btn-glow);
     }
     .t-gate-btn-primary:hover { background: #2563eb; border-color: #2563eb; }
+    .t-auth-inline-button-secondary {
+      background: rgba(15,23,42,0.92);
+      color: #dbeafe;
+      border: 1px solid rgba(96,165,250,0.24);
+      box-shadow: none;
+    }
+    .t-auth-inline-button-secondary:hover {
+      background: rgba(30,41,59,0.96);
+      border-color: rgba(96,165,250,0.42);
+    }
     .t-gate-btn-outline {
       font-size: 12px; font-weight: 700; padding: 10px 20px;
       background: transparent; color: var(--dim); border: 1px solid var(--border);
