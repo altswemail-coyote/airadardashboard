@@ -5,8 +5,208 @@ import { resolveEvidenceArticlesAsync, buildBeliefAnalysisPrompt, formatAudience
 const COGNESION_RUNTIME = globalThis.COGNESION_RUNTIME || { mode: 'extension', isHttpRuntime: false, apiBaseUrl: '' };
 const WEB_RUNTIME = COGNESION_RUNTIME.mode === 'web';
 const WEB_API_BASE_URL = COGNESION_RUNTIME.apiBaseUrl || '';
+const AUTH_STATE = {
+  client: null,
+  config: null,
+  session: null,
+  pendingEmail: '',
+  busy: false,
+  error: '',
+  note: '',
+  initialized: false
+};
 
 globalThis.COGNESION_AUTH = globalThis.COGNESION_AUTH || {};
+
+function getAuthGateEl() {
+  return document.getElementById('command-auth-gate');
+}
+
+function renderAuthGate(message = 'Sign in with the same email magic link you use for Topics so Command can unlock live search, briefing, and AI routing on the web.') {
+  if (!WEB_RUNTIME) return;
+  const gate = getAuthGateEl();
+  if (!gate) return;
+
+  const noteClass = AUTH_STATE.error ? 'command-auth-note is-error' : 'command-auth-note';
+  const note = AUTH_STATE.error || AUTH_STATE.note || message;
+
+  gate.classList.add('active');
+  gate.innerHTML = `
+    <div class="command-auth-gate-box">
+      <div class="command-auth-eyebrow">Web Access</div>
+      <div class="command-auth-title">Unlock Command on the web</div>
+      <div class="command-auth-desc">${esc(message)}</div>
+      <form class="command-auth-form" id="command-auth-form">
+        <input
+          id="command-auth-email"
+          class="command-auth-input"
+          type="email"
+          inputmode="email"
+          autocomplete="email"
+          placeholder="you@example.com"
+          value="${esc(AUTH_STATE.pendingEmail)}"
+          required
+        />
+        <button type="submit" class="command-auth-button" ${AUTH_STATE.busy ? 'disabled' : ''}>
+          ${AUTH_STATE.busy ? 'Sending…' : 'Email Link'}
+        </button>
+      </form>
+      <div class="${noteClass}">${esc(note)}</div>
+      <div class="command-auth-actions">
+        <a class="command-auth-link" href="/">Home</a>
+        <a class="command-auth-link" href="/app">Open Topics</a>
+      </div>
+    </div>`;
+
+  gate.querySelector('#command-auth-form')?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = gate.querySelector('#command-auth-email')?.value?.trim() || '';
+    await sendMagicLink(email);
+  });
+}
+
+function clearAuthGate() {
+  const gate = getAuthGateEl();
+  if (!gate) return;
+  gate.classList.remove('active');
+  gate.innerHTML = '';
+}
+
+async function fetchAuthConfig() {
+  const response = await fetch(`${WEB_API_BASE_URL}/api/auth/config`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || 'Supabase browser auth is not configured yet.');
+  }
+  return payload.supabase || null;
+}
+
+async function ensureWebAuthClient() {
+  if (!WEB_RUNTIME) return null;
+  if (AUTH_STATE.client) return AUTH_STATE.client;
+
+  const createClient = globalThis.supabase?.createClient;
+  if (typeof createClient !== 'function') {
+    throw new Error('Supabase browser client failed to load.');
+  }
+
+  if (!AUTH_STATE.config) {
+    AUTH_STATE.config = await fetchAuthConfig();
+  }
+
+  if (!AUTH_STATE.config?.url || !AUTH_STATE.config?.publishableKey) {
+    throw new Error('Supabase browser auth is missing its public configuration.');
+  }
+
+  AUTH_STATE.client = createClient(AUTH_STATE.config.url, AUTH_STATE.config.publishableKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+
+  return AUTH_STATE.client;
+}
+
+async function getAccessToken() {
+  if (!WEB_RUNTIME) return null;
+  if (AUTH_STATE.session?.access_token) return AUTH_STATE.session.access_token;
+  const client = await ensureWebAuthClient();
+  const { data } = await client.auth.getSession();
+  AUTH_STATE.session = data?.session || null;
+  return AUTH_STATE.session?.access_token || null;
+}
+
+globalThis.COGNESION_AUTH.getAccessToken = getAccessToken;
+
+async function sendMagicLink(email) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    AUTH_STATE.error = 'Enter the email you want tied to this Command workspace.';
+    AUTH_STATE.note = '';
+    renderAuthGate();
+    return;
+  }
+
+  AUTH_STATE.pendingEmail = normalizedEmail;
+  AUTH_STATE.busy = true;
+  AUTH_STATE.error = '';
+  AUTH_STATE.note = '';
+  renderAuthGate();
+
+  try {
+    const client = await ensureWebAuthClient();
+    const { error } = await client.auth.signInWithOtp({
+      email: normalizedEmail,
+      options: {
+        shouldCreateUser: true,
+        emailRedirectTo: `${window.location.origin}/command`
+      }
+    });
+
+    if (error) throw error;
+
+    AUTH_STATE.note = `Magic link sent to ${normalizedEmail}. Open it on this device and Command will unlock automatically.`;
+  } catch (error) {
+    AUTH_STATE.error = error?.message || 'Unable to send the sign-in email right now.';
+  } finally {
+    AUTH_STATE.busy = false;
+    renderAuthGate('Check your inbox for the magic link, then come back here. Command will unlock as soon as Supabase confirms your session.');
+  }
+}
+
+async function hydrateSessionFromBrowser() {
+  const client = await ensureWebAuthClient();
+  const { data } = await client.auth.getSession();
+  AUTH_STATE.session = data?.session || null;
+  return client;
+}
+
+async function bootWebAuth() {
+  AUTH_STATE.error = '';
+  AUTH_STATE.note = 'Use the same email magic link from Topics so Command can use the protected live search and AI routes.';
+  renderAuthGate();
+
+  try {
+    const client = await hydrateSessionFromBrowser();
+
+    client.auth.onAuthStateChange((_event, session) => {
+      AUTH_STATE.session = session || null;
+      AUTH_STATE.error = '';
+
+      if (session?.user?.email) {
+        AUTH_STATE.note = `Signed in as ${session.user.email}.`;
+        clearAuthGate();
+        if (!AUTH_STATE.initialized) {
+          AUTH_STATE.initialized = true;
+          init();
+        }
+        return;
+      }
+
+      renderAuthGate();
+      if (AUTH_STATE.initialized) {
+        window.location.reload();
+      }
+    });
+
+    if (AUTH_STATE.session?.user?.email) {
+      clearAuthGate();
+      if (!AUTH_STATE.initialized) {
+        AUTH_STATE.initialized = true;
+        await init();
+      }
+      return;
+    }
+
+    renderAuthGate();
+  } catch (error) {
+    AUTH_STATE.error = error?.message || 'Unable to start secure web sign-in.';
+    AUTH_STATE.note = '';
+    renderAuthGate(AUTH_STATE.error);
+  }
+}
 
 async function getRuntimeAuthHeaders() {
   const accessTokenReader = globalThis.COGNESION_AUTH?.getAccessToken;
@@ -3827,7 +4027,7 @@ function getDemoData() {
 }
 
 // ── INIT ──
-document.addEventListener('DOMContentLoaded', async () => {
+async function init() {
   await runtimeApiKeysReady;
   ui = {
     search: document.getElementById('smart-search'),
@@ -4242,4 +4442,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       delete ui.analystModal.dataset.activeBelief;
     }
   });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (WEB_RUNTIME) {
+    await bootWebAuth();
+    return;
+  }
+
+  await init();
 });

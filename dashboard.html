@@ -84,7 +84,9 @@
         <button class="chip" data-q="AI Regulation">Policy</button>
       </div>
     </div>
-  </header>
+</header>
+
+  <div id="command-auth-gate" class="command-auth-gate" aria-live="polite"></div>
 
   <!-- MAIN -->
   <div class="page-wrap">
@@ -295,6 +297,7 @@
 
   <div id="tr-overlay" aria-hidden="true"></div>
 
+  <script src="/vendor/supabase/supabase.js"></script>
   <script src="airadar-loading-screen.js"></script>
   <script src="airadar-loading-shell-init.js"></script>
   <script type="module" src="dashboard.js"></script>
