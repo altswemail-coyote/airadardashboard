@@ -115,14 +115,16 @@ function buildAuthShellHtml() {
   if (AUTH_STATE.session?.user?.email) {
     const statusValue = AUTH_STATE.session?.adminBypass ? 'Admin Test Access' : 'Workspace Synced';
     const statusLabel = AUTH_STATE.session?.adminBypass
-      ? `Admin pressure-test access is active for ${AUTH_STATE.session.user.email}. Topics stay unlocked on this browser until you clear this session.`
-      : `Signed in as ${AUTH_STATE.session.user.email}. Your boards and tracked topics now follow your account instead of this browser only.`;
+      ? `${AUTH_STATE.session.user.email} · unlocked on this browser`
+      : `${AUTH_STATE.session.user.email} · boards synced`;
     const statePill = AUTH_STATE.session?.adminBypass ? 'Admin access' : 'Signed in';
     const signOutLabel = AUTH_STATE.session?.adminBypass ? 'Clear access' : 'Sign out';
 
     return `
-      <span class="t-top-bar-status-value">${esc(statusValue)}</span>
-      <span class="t-top-bar-status-label">${esc(statusLabel)}</span>
+      <div class="t-top-bar-status-copy">
+        <span class="t-top-bar-status-value">${esc(statusValue)}</span>
+        <span class="t-top-bar-status-label">${esc(statusLabel)}</span>
+      </div>
       <div class="t-auth-inline-subactions">
         <span class="t-auth-state-pill">${esc(statePill)}</span>
         <button type="button" class="t-auth-inline-link" id="t-auth-signout">${esc(signOutLabel)}</button>
@@ -136,8 +138,10 @@ function buildAuthShellHtml() {
     || 'Use the email magic link to unlock Topics on the web. Password setup can come later.';
 
   return `
-    <span class="t-top-bar-status-value">Secure Sign In</span>
-    <span class="t-top-bar-status-label">Enter your email and we’ll send a one-tap link that opens this Topics workspace on the correct account.</span>
+    <div class="t-top-bar-status-copy">
+      <span class="t-top-bar-status-value">Secure Sign In</span>
+      <span class="t-top-bar-status-label">Unlock saved boards and brief delivery on the web.</span>
+    </div>
     <form class="t-auth-inline-form" id="t-auth-form">
       <input
         id="t-auth-email"
@@ -164,6 +168,8 @@ function renderAuthShell() {
   const shell = getAuthShellEl();
   if (!shell) return;
   shell.innerHTML = buildAuthShellHtml();
+  shell.classList.toggle('is-authenticated', Boolean(AUTH_STATE.session?.user?.email));
+  shell.classList.toggle('is-admin-session', Boolean(AUTH_STATE.session?.adminBypass));
 
   if (AUTH_STATE.session?.user?.email) {
     shell.querySelector('#t-auth-signout')?.addEventListener('click', async () => {
