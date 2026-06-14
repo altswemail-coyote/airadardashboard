@@ -952,6 +952,12 @@ function newsletterModalTitleHTML() {
 const MODAL_BADGE_STYLE_CLAUDE = 'background:rgba(99,102,241,0.15);border:1px solid rgba(99,102,241,0.3);color:#a5b4fc;font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:10px;';
 const MODAL_BADGE_STYLE_GPT4O = 'background:rgba(16,185,129,0.15);border:1px solid rgba(16,185,129,0.3);color:#10b981;font-size:9px;font-weight:800;letter-spacing:1px;padding:2px 7px;border-radius:10px;';
 
+function setModalFooterHidden(hidden = false) {
+  const footer = document.getElementById('t-modal-footer');
+  if (!footer) return;
+  footer.style.display = hidden ? 'none' : 'flex';
+}
+
 function openModal(title, badge, badgeStyle, content, type = 'default', hideBadge = false) {
   currentModalType = type;
   const titleEl = document.getElementById('t-modal-title');
@@ -1011,6 +1017,7 @@ function openModal(title, badge, badgeStyle, content, type = 'default', hideBadg
   }
   if (schedPanel) schedPanel.classList.remove('open');
   if (isDispatch) loadDispatchScheduleIntoPanel();
+  setModalFooterHidden(false);
 }
 
 function closeModal() {
@@ -1025,6 +1032,7 @@ function closeModal() {
   if (composer) composer.style.display = 'none';
   if (cadenceTgl) cadenceTgl.style.display = 'none';
   if (badgeEl)   badgeEl.style.display = '';
+  setModalFooterHidden(false);
 }
 
 function setModalBody(html) {
@@ -2367,6 +2375,62 @@ function buildTopicProfileDraftPreview(set) {
   return draftProfile;
 }
 
+function getTopicProfileDraftForUpdate(set = getActiveSet()) {
+  const previewProfile = buildTopicProfileDraftPreview(set);
+  if (previewProfile) return previewProfile;
+  const storedProfile = normalizeTopicSetProfile(set?.profile);
+  const draftValues = readTopicProfileFormValues(true);
+  const draftProfile = normalizeTopicSetProfile({
+    source: 'profile',
+    ...draftValues,
+    competitors: draftValues.includeCompetitors ? (storedProfile?.competitors || []) : [],
+    generatedAt: storedProfile?.generatedAt || null
+  });
+  return hasTopicSetProfileDetails(draftProfile) ? draftProfile : null;
+}
+
+function setTopicGenerationStatus(message = '', isError = false) {
+  const status = document.getElementById('t-recos-status');
+  if (!status) return;
+  if (!message) {
+    status.style.display = 'none';
+    status.textContent = '';
+    status.style.color = '';
+    return;
+  }
+  status.style.display = 'block';
+  status.textContent = message;
+  status.style.color = isError ? '#fca5a5' : '';
+}
+
+function openTopicProfileRequirementsModal() {
+  openModal(
+    'Complete Your Profile',
+    'Required',
+    'background:#f59e0b22;border:1px solid #f59e0b44;color:#f59e0b;',
+    `<div style="font-size:14px;color:#d4d4d8;line-height:1.7;padding:8px 0;">
+      To generate personalised monitoring signals, please fill in both:<br><br>
+      <strong style="color:#f4f4f5;">Industry</strong> — the sector or market you operate in<br>
+      <strong style="color:#f4f4f5;">Brand / Account</strong> — the specific company or brand to monitor for<br><br>
+      <span style="color:#71717a;font-size:12px;">These fields ensure every signal is specific to your situation, not generic AI topics.</span>
+    </div>`
+  );
+  setModalFooterHidden(true);
+}
+
+function renderTopicProfileSummaryMarkup(profile) {
+  if (!profile) return '';
+  const chips = [];
+  if (profile.career) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Industry</span><span class="t-set-context-chip-value">${esc(profile.career)}</span></span>`);
+  if (profile.account) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Brand</span><span class="t-set-context-chip-value">${esc(profile.account)}</span></span>`);
+  if (profile.role) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Role</span><span class="t-set-context-chip-value">${esc(profile.role)}</span></span>`);
+  if (profile.keywords) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Priority</span><span class="t-set-context-chip-value">${esc(profile.keywords)}</span></span>`);
+  if (profile.includeCompetitors) {
+    chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Competitors</span><span class="t-set-context-chip-value">Refresh with top 3 competitors</span></span>`);
+  }
+  return chips.join('');
+}
+
 function persistTopicProfileFields() {
   const career   = document.getElementById('t-user-career')?.value   || '';
   const account  = document.getElementById('t-user-account')?.value  || '';
@@ -2429,6 +2493,15 @@ function syncInlineTopicProfileValue(field, value) {
   setTopicProfileFormFieldValue(field, value);
   persistTopicProfileFields();
   markTopicProfileDraftDirty();
+  const set = getActiveSet();
+  if (!set?.id) return;
+  const hasPreview = !!buildTopicProfileDraftPreview(set);
+  const updateButton = document.getElementById('t-set-context-update-btn');
+  const previewMeta = document.querySelector('.t-set-context-meta-line.is-preview');
+  const shouldRefreshContext =
+    (hasPreview && (!updateButton || !previewMeta)) ||
+    (!hasPreview && (updateButton || previewMeta));
+  if (shouldRefreshContext) renderActiveSetContext();
 }
 
 function renderTopicContextChip(field, value) {
@@ -2452,6 +2525,8 @@ function bindActiveSetContextInteractions() {
   const wrap = document.getElementById('t-set-context');
   const set = getActiveSet();
   if (!wrap || !set) return;
+
+  wrap.querySelector('#t-set-context-update-btn')?.addEventListener('click', openTopicProfileUpdateModal);
 
   wrap.querySelectorAll('.t-set-context-chip-editable[data-profile-field]').forEach(chip => {
     const field = chip.dataset.profileField;
@@ -2578,14 +2653,22 @@ function renderActiveSetContext() {
   const topicCountLine = isPreview
     ? `${topicCount} current tracked topic${topicCount === 1 ? '' : 's'}`
     : `${topicCount} tracked topic${topicCount === 1 ? '' : 's'}`;
+  const actionMarkup = isPreview
+    ? `<div class="t-set-context-actions">
+        <button type="button" class="t-action-btn primary t-set-context-update-btn" id="t-set-context-update-btn">Update Topics</button>
+      </div>`
+    : '';
 
   el.innerHTML = `
     <div class="t-set-context-copy">
       <div class="t-set-context-chips">${chips.join('')}</div>
     </div>
-    <div class="t-set-context-meta">
-      <span class="t-set-context-meta-line${isPreview ? ' is-preview' : ''}">${metaLine}</span>
-      <span class="t-set-context-meta-line">${topicCountLine}</span>
+    <div class="t-set-context-side">
+      ${actionMarkup}
+      <div class="t-set-context-meta">
+        <span class="t-set-context-meta-line${isPreview ? ' is-preview' : ''}">${metaLine}</span>
+        <span class="t-set-context-meta-line">${topicCountLine}</span>
+      </div>
     </div>
   `;
   bindActiveSetContextInteractions();
@@ -2868,6 +2951,189 @@ async function deleteTopicSet(setId) {
   renderSidebar();
   renderDetail(selectedTopic);
   chrome.storage.local.get(['hotList'], dd => renderProChips(dd.hotList || []));
+}
+
+async function resolveTopicProfileSignals(profile, onStatus = () => {}) {
+  const nextProfile = normalizeTopicSetProfile(profile);
+  let competitors = [];
+
+  if (nextProfile.includeCompetitors && nextProfile.account) {
+    onStatus('Identifying competitors…');
+    competitors = await getTopCompetitors(nextProfile.account, nextProfile.career);
+    if (competitors.length) {
+      onStatus(`Adding ${competitors.join(', ')} — generating topics…`);
+    }
+  }
+
+  onStatus('Generating AI topic set…');
+  const signals = await generateSignalsAI(
+    nextProfile.role,
+    nextProfile.career,
+    nextProfile.account,
+    nextProfile.keywords,
+    competitors
+  );
+
+  if (!signals.length) {
+    throw new Error('No AI topic suggestions were returned. Check your OpenAI setup in Command and try again.');
+  }
+
+  return {
+    signals,
+    profile: normalizeTopicSetProfile({
+      ...nextProfile,
+      source: 'profile',
+      competitors,
+      generatedAt: new Date().toISOString()
+    })
+  };
+}
+
+async function createTopicBoardFromProfile(profile) {
+  const name = nextBoardName();
+  const newSet = WEB_RUNTIME
+    ? buildTopicSetFromApiBoard(await createTopicBoardViaApi({
+        name,
+        originType: 'profile',
+        profileSnapshot: profile
+      }))
+    : {
+        id: generateTopicSetId(),
+        name,
+        originType: 'profile',
+        profile,
+        topicRecords: [],
+        topics: []
+      };
+
+  if (activeTopicSetId) lastTopicBySetId[activeTopicSetId] = selectedTopic || null;
+  topicSets.push(newSet);
+  activeTopicSetId = newSet.id;
+  lastTopicBySetId[newSet.id] = null;
+  applyActiveSetTopics();
+  selectedTopic = null;
+  await saveTopicSetsState();
+  return newSet;
+}
+
+async function commitTopicProfileUpdate(mode, profile, onStatus = () => {}) {
+  const activeSet = getActiveSet();
+  if (!activeSet) throw new Error('Select a board before applying new topic parameters.');
+  if (!profile?.career || !profile?.account) {
+    throw new Error('Industry and Brand are required before you can update tracked topics.');
+  }
+
+  const status = (message) => {
+    onStatus(message);
+    setTopicGenerationStatus(message);
+  };
+
+  const { signals, profile: finalizedProfile } = await resolveTopicProfileSignals(profile, status);
+
+  if (mode === 'create') {
+    status('Creating a new board from these parameters…');
+    await createTopicBoardFromProfile(finalizedProfile);
+    status('Building tracked topics…');
+    await replaceActiveSetTopics(signals);
+  } else {
+    activeSet.profile = finalizedProfile;
+    if (WEB_RUNTIME && activeSet.id) {
+      const updatedBoard = await updateTopicBoardViaApi(activeSet.id, {
+        name: activeSet.name,
+        profileSnapshot: activeSet.profile
+      });
+      updateLocalSetFromApiBoard(activeSet, updatedBoard);
+    }
+    await saveTopicSetsState();
+    status((activeSet.topics || []).length ? 'Replacing current topic set…' : 'Building tracked topics…');
+    await replaceActiveSetTopics(signals);
+  }
+
+  clearTopicProfileDraft();
+  renderActiveSetContext();
+  setTopicGenerationStatus('');
+}
+
+function openTopicProfileUpdateModal() {
+  const set = getActiveSet();
+  if (!set) return;
+  setTopicGenerationStatus('');
+
+  const draftProfile = getTopicProfileDraftForUpdate(set);
+  if (!draftProfile?.career || !draftProfile?.account) {
+    openTopicProfileRequirementsModal();
+    return;
+  }
+
+  const currentTopicCount = (set.topics || []).length;
+  const summaryMarkup = renderTopicProfileSummaryMarkup(draftProfile);
+  const replaceCopy = currentTopicCount
+    ? `Replace <strong>${esc(set.name)}</strong> with a fresh AI-built topic set from these parameters. This deletes the ${currentTopicCount} tracked topic${currentTopicCount === 1 ? '' : 's'} currently on this board and resets its related scans and beliefs.`
+    : `Use <strong>${esc(set.name)}</strong> as the board for this refreshed topic set. Because the board is empty, nothing existing will be removed.`;
+
+  openModal(
+    'Update Topics',
+    'Draft',
+    'background:rgba(96,165,250,0.16);border:1px solid rgba(96,165,250,0.3);color:#93c5fd;',
+    `
+      <div class="t-topic-update-modal">
+        <div class="t-topic-update-copy">
+          Choose how these profile edits should be applied. Nothing changes on this board until you commit one of the options below.
+        </div>
+        <div class="t-topic-update-summary">${summaryMarkup}</div>
+        <div class="t-topic-update-grid">
+          <button type="button" class="t-topic-update-choice" data-topic-update-mode="create">
+            <span class="t-topic-update-choice-title">Create New Board</span>
+            <span class="t-topic-update-choice-copy">Keep <strong>${esc(set.name)}</strong> intact and spin up a new board with its own tracked topics, scans, and briefing path.</span>
+          </button>
+          <button type="button" class="t-topic-update-choice is-danger" data-topic-update-mode="replace">
+            <span class="t-topic-update-choice-title">Replace This Board</span>
+            <span class="t-topic-update-choice-copy">${replaceCopy}</span>
+          </button>
+        </div>
+        ${currentTopicCount ? `
+          <div class="t-topic-update-alert">
+            Replacing this board is destructive. The current articles, tracked topics, and belief history on <strong>${esc(set.name)}</strong> will be removed before the new parameter set is applied.
+          </div>
+        ` : ''}
+        <div class="t-topic-update-status" id="t-topic-update-status"></div>
+      </div>
+    `,
+    'default',
+    true
+  );
+  setModalFooterHidden(true);
+
+  const statusEl = document.getElementById('t-topic-update-status');
+  const actionButtons = [...document.querySelectorAll('[data-topic-update-mode]')];
+  const closeBtn = document.getElementById('t-modal-close');
+  const setPendingState = (pending, message = '', isError = false) => {
+    actionButtons.forEach(button => { button.disabled = pending; });
+    if (closeBtn) closeBtn.disabled = pending;
+    if (statusEl) {
+      statusEl.textContent = message;
+      statusEl.classList.toggle('is-error', !!isError);
+    }
+  };
+
+  actionButtons.forEach(button => {
+    button.addEventListener('click', async () => {
+      const mode = button.dataset.topicUpdateMode;
+      setPendingState(true, mode === 'create' ? 'Creating board and generating topics…' : 'Replacing board topics…');
+      try {
+        await commitTopicProfileUpdate(mode, draftProfile, (message) => {
+          if (statusEl) {
+            statusEl.textContent = message;
+            statusEl.classList.remove('is-error');
+          }
+        });
+        closeModal();
+      } catch (error) {
+        setTopicGenerationStatus(error?.message || 'Unable to apply topic changes.', true);
+        setPendingState(false, error?.message || 'Unable to apply topic changes.', true);
+      }
+    });
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4274,85 +4540,9 @@ function wireProControls() {
   // Generate monitoring signals
   document.getElementById('t-btn-run-recos')?.addEventListener('click', async () => {
     saveProfile();
-    const career   = document.getElementById('t-user-career')?.value.trim()   || '';
-    const account  = document.getElementById('t-user-account')?.value.trim()  || '';
-    const role     = document.getElementById('t-user-role')?.value.trim()     || '';
-    const keywords = document.getElementById('t-user-keywords')?.value.trim() || '';
-    const includeCompetitors = document.getElementById('t-include-competitors')?.checked ?? false;
-
-    if (!career || !account) {
-      openModal(
-        'Complete Your Profile',
-        'Required',
-        'background:#f59e0b22;border:1px solid #f59e0b44;color:#f59e0b;',
-        `<div style="font-size:14px;color:#d4d4d8;line-height:1.7;padding:8px 0;">
-          To generate personalised monitoring signals, please fill in both:<br><br>
-          <strong style="color:#f4f4f5;">Industry</strong> — the sector or market you operate in<br>
-          <strong style="color:#f4f4f5;">Brand / Account</strong> — the specific company or brand to monitor for<br><br>
-          <span style="color:#71717a;font-size:12px;">These fields ensure every signal is specific to your situation, not generic AI topics.</span>
-        </div>`
-      );
-      return;
-    }
-
-    const activeSet = getActiveSet();
-    const currentTopicCount = (activeSet?.topics || []).length;
-    if (activeSet && currentTopicCount) {
-      const confirmed = window.confirm(
-        `Update "${activeSet.name}" with a new AI-generated topic set?\n\nThis will replace the ${currentTopicCount} tracked topic${currentTopicCount === 1 ? '' : 's'} currently on this board. The board's supporting scans, beliefs, and future briefings will shift to match the updated profile.\n\nContinue?`
-      );
-      if (!confirmed) return;
-    }
-
-    const status = document.getElementById('t-recos-status');
-    let competitors = [];
-    if (includeCompetitors && account) {
-      if (status) { status.style.display = 'block'; status.textContent = 'Identifying competitors…'; }
-      competitors = await getTopCompetitors(account, career);
-      if (competitors.length && status) status.textContent = `Adding ${competitors.join(', ')} — generating topics…`;
-    }
-    if (status) {
-      status.style.display = 'block';
-      if (!includeCompetitors || !competitors.length) status.textContent = 'AI Analyzing…';
-    }
-    const signals = await generateSignalsAI(role, career, account, keywords, competitors);
-    if (status) status.style.display = 'none';
-    if (!signals.length) {
-      if (status) {
-        status.style.display = 'block';
-        status.textContent = 'No OpenAI key found — add one in Command to generate AI topic suggestions.';
-        setTimeout(() => { status.style.display = 'none'; }, 3000);
-      }
-      return;
-    }
-    if (activeSet) {
-      activeSet.profile = normalizeTopicSetProfile({
-        source: 'profile',
-        career,
-        account,
-        role,
-        keywords,
-        includeCompetitors,
-        competitors,
-        generatedAt: new Date().toISOString()
-      });
-      if (WEB_RUNTIME && activeSet.id) {
-        const updatedBoard = await updateTopicBoardViaApi(activeSet.id, {
-          name: activeSet.name,
-          profileSnapshot: activeSet.profile
-        });
-        updateLocalSetFromApiBoard(activeSet, updatedBoard);
-      }
-      await saveTopicSetsState();
-    }
-    if (status) {
-      status.style.display = 'block';
-      status.textContent = currentTopicCount ? 'Replacing current topic set…' : 'Building tracked topics…';
-    }
-    await replaceActiveSetTopics(signals);
-    clearTopicProfileDraft();
+    markTopicProfileDraftDirty();
     renderActiveSetContext();
-    if (status) status.style.display = 'none';
+    openTopicProfileUpdateModal();
   });
 
   // Monitor toggle

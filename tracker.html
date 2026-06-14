@@ -117,6 +117,13 @@
       align-items: center;
       flex: 1;
     }
+    .t-set-context-side {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 12px;
+    }
     .t-set-context-chips {
       display: flex;
       flex-wrap: wrap;
@@ -196,12 +203,113 @@
       flex-direction: column;
       gap: 4px;
     }
+    .t-set-context-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .t-set-context-update-btn {
+      min-height: 36px;
+      padding: 0 16px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .t-set-context-update-btn:not(.primary) {
+      color: rgba(191,219,254,0.92);
+      border-color: rgba(96,165,250,0.22);
+      background: rgba(59,130,246,0.08);
+    }
+    .t-set-context-update-btn.primary {
+      box-shadow: 0 0 0 1px rgba(96,165,250,0.16), 0 10px 28px rgba(37,99,235,0.24);
+    }
     .t-set-context-meta-line {
       display: block;
       white-space: nowrap;
     }
     .t-set-context-meta-line.is-preview {
       color: rgba(147,197,253,0.96);
+    }
+    .t-topic-update-modal {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .t-topic-update-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .t-topic-update-copy {
+      color: rgba(212,212,216,0.9);
+      font-size: 14px;
+      line-height: 1.65;
+    }
+    .t-topic-update-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .t-topic-update-choice {
+      text-align: left;
+      padding: 16px;
+      border-radius: 16px;
+      border: 1px solid rgba(148,163,184,0.18);
+      background: rgba(255,255,255,0.035);
+      color: rgba(241,245,249,0.96);
+      cursor: pointer;
+      transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+    }
+    .t-topic-update-choice:hover,
+    .t-topic-update-choice:focus-visible {
+      border-color: rgba(96,165,250,0.36);
+      background: rgba(59,130,246,0.12);
+      transform: translateY(-1px);
+      outline: none;
+    }
+    .t-topic-update-choice.is-danger:hover,
+    .t-topic-update-choice.is-danger:focus-visible {
+      border-color: rgba(248,113,113,0.42);
+      background: rgba(239,68,68,0.1);
+    }
+    .t-topic-update-choice:disabled {
+      opacity: 0.48;
+      cursor: progress;
+      transform: none;
+    }
+    .t-topic-update-choice-title {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #f8fafc;
+    }
+    .t-topic-update-choice-copy {
+      display: block;
+      font-size: 12px;
+      line-height: 1.55;
+      color: rgba(203,213,225,0.86);
+    }
+    .t-topic-update-alert {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid rgba(248,113,113,0.26);
+      background: rgba(127,29,29,0.18);
+      color: #fecaca;
+      font-size: 12px;
+      line-height: 1.55;
+    }
+    .t-topic-update-status {
+      min-height: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: rgba(147,197,253,0.96);
+    }
+    .t-topic-update-status.is-error {
+      color: #fca5a5;
     }
     .t-set-tab-add {
       flex-shrink: 0;
@@ -2147,8 +2255,20 @@
         flex-direction: column;
         align-items: flex-start;
       }
+      .t-set-context-side {
+        width: 100%;
+        align-items: flex-start;
+        justify-content: space-between;
+        flex-wrap: wrap;
+      }
+      .t-set-context-actions {
+        width: 100%;
+      }
       .t-set-context-meta {
         text-align: left;
+      }
+      .t-topic-update-grid {
+        grid-template-columns: 1fr;
       }
       .t-empty-grid {
         grid-template-columns: 1fr;
@@ -2279,7 +2399,7 @@
       <!-- Smarter monitoring -->
       <div class="t-right-section">
         <div class="t-right-section-title">Generate topics from your profile</div>
-        <p class="t-right-helper">Edit these fields to preview how this board will shift. When you generate, Cognesion will replace this board&apos;s current tracked topics with a new AI-built set after you confirm.</p>
+        <p class="t-right-helper">Edit these fields to preview how this board will shift. When you apply the draft, Cognesion will let you either create a new board or replace this board after you confirm.</p>
         <div class="t-right-field">
           <div class="t-right-field-label">Industry</div>
           <input id="t-user-career" class="t-right-input" placeholder="Healthcare..." />
