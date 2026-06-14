@@ -1997,6 +1997,8 @@ let radarRole = '';
 let radarKeywords = '';
 let radarEmail = '';
 let radarLanguage = '';
+let topicProfileDraftState = { setId: null, dirty: false };
+let topicProfileInlineEditor = { setId: null, field: null, originalValue: '' };
 let sidebarSortMode = 'conf-desc';
 
 // Keyed by topic name → { recommend, reasoning, suggestions, cachedAt }
@@ -2289,6 +2291,208 @@ function normalizeTopicSetProfile(profile) {
   };
 }
 
+const TOPIC_PROFILE_FIELD_CONFIG = {
+  career:   { label: 'Industry', inputId: 't-user-career', placeholder: 'Healthcare...' },
+  account:  { label: 'Brand', inputId: 't-user-account', placeholder: 'Nike, Pfizer...' },
+  role:     { label: 'Role', inputId: 't-user-role', placeholder: 'CMO, VP...' },
+  keywords: { label: 'Priority', inputId: 't-user-keywords', placeholder: 'Automation...' }
+};
+
+function hasTopicSetProfileDetails(profile) {
+  return !!(
+    profile &&
+    (
+      profile.career ||
+      profile.account ||
+      profile.role ||
+      profile.keywords ||
+      profile.includeCompetitors
+    )
+  );
+}
+
+function readTopicProfileFormValues(trimValues = false) {
+  const read = (id) => {
+    const value = document.getElementById(id)?.value || '';
+    return trimValues ? value.trim() : value;
+  };
+  return {
+    career: read('t-user-career'),
+    account: read('t-user-account'),
+    role: read('t-user-role'),
+    keywords: read('t-user-keywords'),
+    includeCompetitors: document.getElementById('t-include-competitors')?.checked ?? false
+  };
+}
+
+function topicProfilesMatch(left, right) {
+  const a = normalizeTopicSetProfile(left);
+  const b = normalizeTopicSetProfile(right);
+  if (!a && !b) return true;
+  if (!a || !b) return false;
+  return (
+    a.source === b.source &&
+    a.career === b.career &&
+    a.account === b.account &&
+    a.role === b.role &&
+    a.keywords === b.keywords &&
+    a.includeCompetitors === b.includeCompetitors &&
+    JSON.stringify(a.competitors || []) === JSON.stringify(b.competitors || [])
+  );
+}
+
+function markTopicProfileDraftDirty(set = getActiveSet()) {
+  if (!set?.id) return;
+  topicProfileDraftState = { setId: set.id, dirty: true };
+}
+
+function clearTopicProfileDraft() {
+  topicProfileDraftState = { setId: null, dirty: false };
+  topicProfileInlineEditor = { setId: null, field: null, originalValue: '' };
+}
+
+function buildTopicProfileDraftPreview(set) {
+  if (!set?.id) return null;
+  if (!topicProfileDraftState.dirty || topicProfileDraftState.setId !== set.id) return null;
+  const storedProfile = normalizeTopicSetProfile(set.profile);
+  const draftValues = readTopicProfileFormValues(true);
+  const draftProfile = normalizeTopicSetProfile({
+    source: 'profile',
+    ...draftValues,
+    competitors: draftValues.includeCompetitors ? (storedProfile?.competitors || []) : [],
+    generatedAt: storedProfile?.generatedAt || null
+  });
+  if (!hasTopicSetProfileDetails(draftProfile)) return null;
+  if (topicProfilesMatch(draftProfile, storedProfile)) return null;
+  return draftProfile;
+}
+
+function persistTopicProfileFields() {
+  const career   = document.getElementById('t-user-career')?.value   || '';
+  const account  = document.getElementById('t-user-account')?.value  || '';
+  const role     = document.getElementById('t-user-role')?.value     || '';
+  const keywords = document.getElementById('t-user-keywords')?.value || '';
+  const email    = document.getElementById('t-user-email')?.value    || '';
+  const language = document.getElementById('t-user-language')?.value || '';
+  const includeCompetitors = document.getElementById('t-include-competitors')?.checked ?? false;
+  chrome.storage.local.set({
+    radarCareer: career,
+    radarAccount: account,
+    radarRole: role,
+    radarKeywords: keywords,
+    radarEmail: email,
+    radarLanguage: language,
+    radarIncludeCompetitors: includeCompetitors
+  });
+  radarCareer = career;
+  radarAccount = account;
+  radarRole = role;
+  radarKeywords = keywords;
+  radarEmail = email;
+  radarLanguage = language;
+  return { career, account, role, keywords, email, language, includeCompetitors };
+}
+
+function setTopicProfileFormFieldValue(field, value) {
+  const config = TOPIC_PROFILE_FIELD_CONFIG[field];
+  if (!config?.inputId) return;
+  const input = document.getElementById(config.inputId);
+  if (input) input.value = value;
+}
+
+function beginInlineTopicProfileEdit(field) {
+  const set = getActiveSet();
+  const config = TOPIC_PROFILE_FIELD_CONFIG[field];
+  if (!set?.id || !config) return;
+  const originalValue = document.getElementById(config.inputId)?.value
+    ?? normalizeTopicSetProfile(set.profile)?.[field]
+    ?? '';
+  topicProfileInlineEditor = { setId: set.id, field, originalValue };
+  markTopicProfileDraftDirty(set);
+  renderActiveSetContext();
+}
+
+function closeInlineTopicProfileEdit({ restore = false } = {}) {
+  const { setId, field, originalValue } = topicProfileInlineEditor;
+  if (!field) return;
+  const set = getActiveSet();
+  if (restore && set?.id === setId) {
+    setTopicProfileFormFieldValue(field, originalValue);
+    persistTopicProfileFields();
+    markTopicProfileDraftDirty(set);
+  }
+  topicProfileInlineEditor = { setId: null, field: null, originalValue: '' };
+  renderActiveSetContext();
+}
+
+function syncInlineTopicProfileValue(field, value) {
+  setTopicProfileFormFieldValue(field, value);
+  persistTopicProfileFields();
+  markTopicProfileDraftDirty();
+}
+
+function renderTopicContextChip(field, value) {
+  const config = TOPIC_PROFILE_FIELD_CONFIG[field];
+  if (!config) return '';
+  const set = getActiveSet();
+  const isEditing = topicProfileInlineEditor.field === field && topicProfileInlineEditor.setId === set?.id;
+  if (isEditing) {
+    return `<span class="t-set-context-chip t-set-context-chip-editable is-editing" data-profile-field="${esc(field)}">
+      <span class="t-set-context-chip-label">${esc(config.label)}</span>
+      <input class="t-set-context-chip-input" data-profile-inline-input="${esc(field)}" value="${esc(value || '')}" placeholder="${esc(config.placeholder || '')}" />
+    </span>`;
+  }
+  return `<button type="button" class="t-set-context-chip t-set-context-chip-editable" data-profile-field="${esc(field)}" title="Click to edit ${esc(config.label.toLowerCase())}">
+    <span class="t-set-context-chip-label">${esc(config.label)}</span>
+    <span class="t-set-context-chip-value">${esc(value || '')}</span>
+  </button>`;
+}
+
+function bindActiveSetContextInteractions() {
+  const wrap = document.getElementById('t-set-context');
+  const set = getActiveSet();
+  if (!wrap || !set) return;
+
+  wrap.querySelectorAll('.t-set-context-chip-editable[data-profile-field]').forEach(chip => {
+    const field = chip.dataset.profileField;
+    if (!TOPIC_PROFILE_FIELD_CONFIG[field]) return;
+    if (chip.classList.contains('is-editing')) return;
+    chip.addEventListener('click', () => beginInlineTopicProfileEdit(field));
+    chip.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        beginInlineTopicProfileEdit(field);
+      }
+    });
+  });
+
+  const activeField = topicProfileInlineEditor.setId === set.id ? topicProfileInlineEditor.field : null;
+  if (!activeField) return;
+  const inlineInput = wrap.querySelector(`[data-profile-inline-input="${activeField}"]`);
+  if (!inlineInput) return;
+
+  inlineInput.addEventListener('input', () => {
+    syncInlineTopicProfileValue(activeField, inlineInput.value);
+  });
+  inlineInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      closeInlineTopicProfileEdit();
+      return;
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeInlineTopicProfileEdit({ restore: true });
+    }
+  });
+  inlineInput.addEventListener('blur', () => closeInlineTopicProfileEdit());
+
+  setTimeout(() => {
+    inlineInput.focus();
+    inlineInput.setSelectionRange(inlineInput.value.length, inlineInput.value.length);
+  }, 0);
+}
+
 function formatTopicSetProfileDate(value) {
   if (!value) return '';
   const dt = new Date(value);
@@ -2333,40 +2537,58 @@ function renderActiveSetContext() {
   if (!el) return;
   const set = getActiveSet();
   if (!set) {
+    topicProfileInlineEditor = { setId: null, field: null, originalValue: '' };
     el.innerHTML = '';
     return;
   }
 
-  const profile = normalizeTopicSetProfile(set.profile);
+  const storedProfile = normalizeTopicSetProfile(set.profile);
+  const previewProfile = buildTopicProfileDraftPreview(set);
+  const profile = previewProfile || storedProfile;
+  const isPreview = !!previewProfile;
   const chips = [];
-  if (profile?.career) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Industry</span>${esc(profile.career)}</span>`);
-  if (profile?.account) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Brand</span>${esc(profile.account)}</span>`);
-  if (profile?.role) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Role</span>${esc(profile.role)}</span>`);
-  if (profile?.keywords) chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Priority</span>${esc(profile.keywords)}</span>`);
+  const shouldRenderEditableField = (field) => (
+    !!(storedProfile?.[field] || profile?.[field]) ||
+    (topicProfileInlineEditor.field === field && topicProfileInlineEditor.setId === set.id)
+  );
+  if (topicProfileInlineEditor.setId && topicProfileInlineEditor.setId !== set.id) {
+    topicProfileInlineEditor = { setId: null, field: null, originalValue: '' };
+  }
+  if (shouldRenderEditableField('career')) chips.push(renderTopicContextChip('career', profile?.career || ''));
+  if (shouldRenderEditableField('account')) chips.push(renderTopicContextChip('account', profile?.account || ''));
+  if (shouldRenderEditableField('role')) chips.push(renderTopicContextChip('role', profile?.role || ''));
+  if (shouldRenderEditableField('keywords')) chips.push(renderTopicContextChip('keywords', profile?.keywords || ''));
   if (profile?.includeCompetitors) {
     const competitorsLabel = profile.competitors.length
       ? profile.competitors.join(', ')
-      : 'Included in topic generation';
-    chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Competitors</span>${esc(competitorsLabel)}</span>`);
+      : (isPreview ? 'Top 3 competitors will be regenerated' : 'Included in topic generation');
+    chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Competitors</span><span class="t-set-context-chip-value">${esc(competitorsLabel)}</span></span>`);
   }
   if (!chips.length) {
-    chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Board</span>Manual setup</span>`);
+    chips.push(`<span class="t-set-context-chip"><span class="t-set-context-chip-label">Board</span><span class="t-set-context-chip-value">Manual setup</span></span>`);
   }
 
   const generatedDate = formatTopicSetProfileDate(profile?.generatedAt);
-  const metaLine = profile?.source === 'profile'
-    ? `Generated from saved profile inputs${generatedDate ? ` · ${generatedDate}` : ''}`
-    : `Manual board${generatedDate ? ` · ${generatedDate}` : ''}`;
+  const metaLine = isPreview
+    ? 'Previewing profile edits · current scans unchanged'
+    : profile?.source === 'profile'
+      ? `Generated from saved profile inputs${generatedDate ? ` · ${generatedDate}` : ''}`
+      : `Manual board${generatedDate ? ` · ${generatedDate}` : ''}`;
+  const topicCount = (set.topics || []).length;
+  const topicCountLine = isPreview
+    ? `${topicCount} current tracked topic${topicCount === 1 ? '' : 's'}`
+    : `${topicCount} tracked topic${topicCount === 1 ? '' : 's'}`;
 
   el.innerHTML = `
     <div class="t-set-context-copy">
       <div class="t-set-context-chips">${chips.join('')}</div>
     </div>
     <div class="t-set-context-meta">
-      <span class="t-set-context-meta-line">${metaLine}</span>
-      <span class="t-set-context-meta-line">${(set.topics || []).length} tracked topic${(set.topics || []).length === 1 ? '' : 's'}</span>
+      <span class="t-set-context-meta-line${isPreview ? ' is-preview' : ''}">${metaLine}</span>
+      <span class="t-set-context-meta-line">${topicCountLine}</span>
     </div>
   `;
+  bindActiveSetContextInteractions();
 }
 
 function applyActiveSetTopics() {
@@ -3342,6 +3564,73 @@ async function addTrackedTopic(topic) {
   chrome.storage.local.get(['hotList'], dd => renderProChips(dd.hotList || []));
 }
 
+async function replaceActiveSetTopics(nextTopics) {
+  const set = getActiveSet();
+  if (!set) return { addedTopics: [], removedTopics: [], retainedTopics: [] };
+
+  const desiredTopics = [...new Set((nextTopics || []).map(topic => String(topic || '').trim()).filter(Boolean))];
+  const currentTopics = [...(set.topics || [])];
+  const removedTopics = currentTopics.filter(topic => !desiredTopics.includes(topic));
+  const retainedTopics = currentTopics.filter(topic => desiredTopics.includes(topic));
+  const addedTopics = desiredTopics.filter(topic => !currentTopics.includes(topic));
+
+  if (WEB_RUNTIME) {
+    const recordByQuery = new Map((set.topicRecords || []).map(record => {
+      const normalized = normalizeTopicRecord(record);
+      return normalized ? [normalized.query, normalized] : null;
+    }).filter(Boolean));
+
+    for (const topic of removedTopics) {
+      const record = recordByQuery.get(topic);
+      if (record?.id) await deleteTopicViaApi(record.id);
+    }
+
+    const nextRecords = [];
+    for (const topic of desiredTopics) {
+      const existingRecord = recordByQuery.get(topic);
+      if (existingRecord) {
+        nextRecords.push(existingRecord);
+        continue;
+      }
+      const createdTopic = await createTopicViaApi({ boardId: set.id, query: topic });
+      nextRecords.push(normalizeTopicRecord(createdTopic));
+    }
+
+    set.topicRecords = nextRecords.filter(Boolean);
+    syncTopicSetTopicQueries(set);
+  } else {
+    set.topics = desiredTopics;
+  }
+
+  for (const topic of addedTopics) {
+    if (!state[topic]) state[topic] = { articles: [], beliefs: [], scanning: false, lastScanned: null };
+  }
+
+  await saveTopicSetsState();
+  applyActiveSetTopics();
+
+  for (const topic of removedTopics) {
+    await purgeTopicFromStorageIfOrphan(topic);
+  }
+
+  if (selectedTopic && !desiredTopics.includes(selectedTopic)) {
+    selectedTopic = addedTopics[0] || retainedTopics[0] || desiredTopics[0] || null;
+  } else if (!selectedTopic) {
+    selectedTopic = desiredTopics[0] || null;
+  }
+
+  renderTopicSetTabs();
+  renderSidebar();
+  renderDetail(selectedTopic);
+
+  for (const topic of addedTopics) {
+    await scanTopic(topic);
+  }
+
+  chrome.storage.local.get(['hotList'], dd => renderProChips(dd.hotList || []));
+  return { addedTopics, removedTopics, retainedTopics };
+}
+
 /** Fetch top 3 direct competitors for a brand/account. Returns array of competitor names or []. */
 async function getTopCompetitors(account, industry) {
   const { openai } = await getKeys();
@@ -3953,20 +4242,18 @@ function wireProControls() {
   document.getElementById('t-hotlist-input')?.addEventListener('keydown', e => { if (e.key === 'Enter') doAdd(); });
 
   // Auto-save profile fields on change
-  const saveProfile = () => {
-    const career   = document.getElementById('t-user-career')?.value   || '';
-    const account  = document.getElementById('t-user-account')?.value  || '';
-    const role     = document.getElementById('t-user-role')?.value     || '';
-    const keywords = document.getElementById('t-user-keywords')?.value || '';
-    const email    = document.getElementById('t-user-email')?.value    || '';
-    const language = document.getElementById('t-user-language')?.value || '';
-    const includeCompetitors = document.getElementById('t-include-competitors')?.checked ?? false;
-    chrome.storage.local.set({ radarCareer: career, radarAccount: account, radarRole: role, radarKeywords: keywords, radarEmail: email, radarLanguage: language, radarIncludeCompetitors: includeCompetitors });
-    radarCareer = career; radarAccount = account; radarRole = role; radarKeywords = keywords; radarEmail = email; radarLanguage = language;
+  const saveProfile = () => persistTopicProfileFields();
+  const syncProfileDraftPreview = () => {
+    saveProfile();
+    markTopicProfileDraftDirty();
+    renderActiveSetContext();
   };
-  ['t-user-career','t-user-account','t-user-role','t-user-keywords','t-user-email','t-include-competitors'].forEach(id =>
-    document.getElementById(id)?.addEventListener('change', saveProfile)
-  );
+  ['t-user-career','t-user-account','t-user-role','t-user-keywords'].forEach(id => {
+    document.getElementById(id)?.addEventListener('input', syncProfileDraftPreview);
+    document.getElementById(id)?.addEventListener('change', syncProfileDraftPreview);
+  });
+  document.getElementById('t-include-competitors')?.addEventListener('change', syncProfileDraftPreview);
+  document.getElementById('t-user-email')?.addEventListener('change', saveProfile);
 
   // Language change — clear cache and re-translate immediately
   document.getElementById('t-user-language')?.addEventListener('change', () => {
@@ -4008,6 +4295,15 @@ function wireProControls() {
       return;
     }
 
+    const activeSet = getActiveSet();
+    const currentTopicCount = (activeSet?.topics || []).length;
+    if (activeSet && currentTopicCount) {
+      const confirmed = window.confirm(
+        `Update "${activeSet.name}" with a new AI-generated topic set?\n\nThis will replace the ${currentTopicCount} tracked topic${currentTopicCount === 1 ? '' : 's'} currently on this board. The board's supporting scans, beliefs, and future briefings will shift to match the updated profile.\n\nContinue?`
+      );
+      if (!confirmed) return;
+    }
+
     const status = document.getElementById('t-recos-status');
     let competitors = [];
     if (includeCompetitors && account) {
@@ -4029,7 +4325,6 @@ function wireProControls() {
       }
       return;
     }
-    const activeSet = getActiveSet();
     if (activeSet) {
       activeSet.profile = normalizeTopicSetProfile({
         source: 'profile',
@@ -4049,9 +4344,15 @@ function wireProControls() {
         updateLocalSetFromApiBoard(activeSet, updatedBoard);
       }
       await saveTopicSetsState();
-      renderActiveSetContext();
     }
-    for (const sig of signals) await addTrackedTopic(sig);
+    if (status) {
+      status.style.display = 'block';
+      status.textContent = currentTopicCount ? 'Replacing current topic set…' : 'Building tracked topics…';
+    }
+    await replaceActiveSetTopics(signals);
+    clearTopicProfileDraft();
+    renderActiveSetContext();
+    if (status) status.style.display = 'none';
   });
 
   // Monitor toggle

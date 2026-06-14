@@ -125,9 +125,10 @@
     }
     .t-set-context-chip {
       display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 11px;
+      align-items: baseline;
+      justify-content: flex-start;
+      gap: 8px;
+      padding: 7px 12px;
       border-radius: 999px;
       border: 1px solid rgba(96,165,250,0.22);
       background: rgba(59,130,246,0.08);
@@ -136,12 +137,53 @@
       color: rgba(226,232,240,0.92);
       white-space: nowrap;
     }
+    .t-set-context-chip-editable {
+      cursor: pointer;
+      transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    }
+    .t-set-context-chip-editable:hover,
+    .t-set-context-chip-editable:focus-visible {
+      border-color: rgba(96,165,250,0.42);
+      background: rgba(59,130,246,0.12);
+      box-shadow: 0 0 0 1px rgba(96,165,250,0.12);
+      outline: none;
+    }
+    .t-set-context-chip-editable.is-editing {
+      cursor: text;
+      border-color: rgba(96,165,250,0.5);
+      background: rgba(59,130,246,0.14);
+      box-shadow: 0 0 0 1px rgba(96,165,250,0.18);
+    }
     .t-set-context-chip-label {
       font-size: 9px;
       font-weight: 800;
       letter-spacing: 0.12em;
       text-transform: uppercase;
       color: #60a5fa;
+      flex-shrink: 0;
+    }
+    .t-set-context-chip-value {
+      font-size: 11px;
+      font-weight: 600;
+      color: rgba(241,245,249,0.98);
+      white-space: nowrap;
+    }
+    .t-set-context-chip-input {
+      min-width: 110px;
+      max-width: 260px;
+      border: none;
+      outline: none;
+      background: transparent;
+      color: rgba(241,245,249,0.98);
+      font-size: 11px;
+      font-weight: 600;
+      font-family: var(--sans);
+      line-height: 1.1;
+      padding: 0;
+      margin: 0;
+    }
+    .t-set-context-chip-input::placeholder {
+      color: rgba(148,163,184,0.72);
     }
     .t-set-context-meta {
       flex-shrink: 0;
@@ -157,6 +199,9 @@
     .t-set-context-meta-line {
       display: block;
       white-space: nowrap;
+    }
+    .t-set-context-meta-line.is-preview {
+      color: rgba(147,197,253,0.96);
     }
     .t-set-tab-add {
       flex-shrink: 0;
@@ -2234,7 +2279,7 @@
       <!-- Smarter monitoring -->
       <div class="t-right-section">
         <div class="t-right-section-title">Generate topics from your profile</div>
-        <p class="t-right-helper">Fill in the four fields below and Cognesion will generate five specific tracked topics for your role, brand, and priorities.</p>
+        <p class="t-right-helper">Edit these fields to preview how this board will shift. When you generate, Cognesion will replace this board&apos;s current tracked topics with a new AI-built set after you confirm.</p>
         <div class="t-right-field">
           <div class="t-right-field-label">Industry</div>
           <input id="t-user-career" class="t-right-input" placeholder="Healthcare..." />
