@@ -72,10 +72,27 @@ function sanitizeEvidenceText(text) {
  * @returns {{ evidenceWithArticles: string, resolvedCount: number, totalCount: number }}
  */
 export function resolveEvidenceArticles(belief, context) {
-  const evidence = (context.evidenceOverride ?? belief.evidence ?? []).slice(0, 5);
-  const { topic, articlesFromState = [], articlesFromStorage = [] } = context;
+  const { entries, resolvedCount, totalCount, excludedCount } = resolveEvidenceEntries(belief, context);
+  const lines = entries.map(entry => {
+    const summaryLine = entry.summary ? `\n  ${entry.summary}` : '';
+    const urlLine = entry.url ? `\n  URL: ${entry.url}` : '';
+    const unavailable = !entry.summary && entry.url ? ' (article details not available)' : '';
+    return `- "${entry.title}" (${entry.source})${summaryLine}${urlLine}${unavailable}`;
+  });
 
-  // Merge articles: state first (fresher), then storage
+  return {
+    evidenceWithArticles: lines.join('\n\n'),
+    resolvedCount,
+    totalCount,
+    excludedCount
+  };
+}
+
+export function resolveEvidenceEntries(belief, context) {
+  const evidence = (context.evidenceOverride ?? belief.evidence ?? []).slice(0, 5);
+  const { articlesFromState = [], articlesFromStorage = [] } = context;
+
+  // Merge articles: state first (fresher), then storage.
   const allArticles = [...articlesFromState];
   const seenUrls = new Set(allArticles.map(a => (a.link || a.url || '')));
   for (const a of articlesFromStorage) {
@@ -86,12 +103,29 @@ export function resolveEvidenceArticles(belief, context) {
     }
   }
 
+  // Freshly created beliefs do not yet have explicit evidence attached.
+  // In that case, fall back to the current topic articles so the user and
+  // downstream model still get the related source URLs on first analysis.
+  const baseItems = evidence.length > 0
+    ? evidence
+    : allArticles.slice(0, 5).map(article => ({
+        link: article.link || article.url || '',
+        url: article.url || article.link || '',
+        source: article.source || getDomainFromUrl(article.link || article.url || '') || 'Unknown',
+        title: article.title || article.source || 'Untitled',
+        summary: article.summary || article.text || '',
+        text: article.text || article.summary || '',
+        date: article.date || article.publishedAt || '',
+        publishedAt: article.publishedAt || article.date || '',
+        ingestedAt: article.ingestedAt || article.date || ''
+      }));
+
   let resolvedCount = 0;
   let excludedCount = 0;
-  const lines = evidence.map(ev => {
+  const entries = baseItems.map(ev => {
     const url = ev.link || ev.url || '';
-    const art = allArticles.find(a => (a.link || a.url) === url);
-    const source = art?.source || ev.source || 'Unknown';
+    const art = url ? allArticles.find(a => (a.link || a.url) === url) : null;
+    const source = art?.source || ev.source || getDomainFromUrl(url) || 'Unknown';
     const title = art?.title || ev.title || ev.source || 'Untitled';
     if (isBlockedBeliefSource(url, source, title)) {
       excludedCount++;
@@ -99,21 +133,24 @@ export function resolveEvidenceArticles(belief, context) {
     }
 
     const summary = sanitizeEvidenceText(art?.summary || ev.summary || ev.text || ev.claim || art?.text || '');
+    const detailsAvailable = Boolean(summary);
+    if (detailsAvailable) resolvedCount++;
 
-    if (art && (art.summary || art.text)) {
-      resolvedCount++;
-    }
-
-    const summaryLine = summary ? `\n  ${summary}` : '';
-    const urlLine = url ? `\n  URL: ${url}` : '';
-    const unavailable = !summary && url ? ' (article details not available)' : '';
-    return `- "${title}" (${source})${summaryLine}${urlLine}${unavailable}`;
+    return {
+      title,
+      source,
+      url,
+      summary,
+      ingestedAt: ev.ingestedAt || art?.ingestedAt || art?.date || ev.date || '',
+      publishedAt: ev.publishedAt || art?.publishedAt || art?.date || ev.date || '',
+      detailsAvailable
+    };
   }).filter(Boolean);
 
   return {
-    evidenceWithArticles: lines.join('\n\n'),
+    entries,
     resolvedCount,
-    totalCount: lines.length,
+    totalCount: entries.length,
     excludedCount
   };
 }
@@ -136,6 +173,27 @@ export async function resolveEvidenceArticlesAsync(belief, context) {
   }
 
   return resolveEvidenceArticles(belief, {
+    ...context,
+    topic,
+    articlesFromState,
+    articlesFromStorage
+  });
+}
+
+export async function resolveEvidenceEntriesAsync(belief, context) {
+  const { topic, articlesFromState = [], storageKey, storageTopic, getStorageArticles } = context;
+
+  let articlesFromStorage = [];
+  if (getStorageArticles) {
+    articlesFromStorage = await getStorageArticles();
+  } else if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+    const data = await new Promise(r => chrome.storage.local.get([storageKey || 'trackerArticles'], d => r(d)));
+    const stored = data[storageKey || 'trackerArticles'] || {};
+    const key = storageTopic ?? topic;
+    articlesFromStorage = stored[key] || [];
+  }
+
+  return resolveEvidenceEntries(belief, {
     ...context,
     topic,
     articlesFromState,

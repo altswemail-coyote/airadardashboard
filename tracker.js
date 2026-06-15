@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { ExaEngine } from './exa-engine.js';
-import { resolveEvidenceArticlesAsync, buildBeliefAnalysisPrompt, formatAudienceProfileLines, parseStructuredAnalysis, validateStructuredAnalysis } from './belief-analysis.js';
+import { resolveEvidenceEntriesAsync, buildBeliefAnalysisPrompt, formatAudienceProfileLines, parseStructuredAnalysis, validateStructuredAnalysis } from './belief-analysis.js';
 import { applyUITranslations, UI_TRANSLATIONS, LANG_NAMES as I18N_LANG_NAMES, showTranslationOverlay, hideTranslationOverlay } from './i18n.js';
 
 // Returns the UI translation for `key` in the current radar language, falling back to English.
@@ -1562,6 +1562,19 @@ document.addEventListener('click', async e => {
     closeAllTooltips();
     const b = beliefCard._beliefData;
     if (!b) return;
+    const topic = b.topic || selectedTopic;
+    const articlesFromState = state[topic]?.articles || [];
+    const {
+      entries: supportingEntries,
+      resolvedCount,
+      totalCount,
+      excludedCount
+    } = await resolveEvidenceEntriesAsync(b, {
+      topic,
+      articlesFromState,
+      storageKey: 'trackerArticles',
+      storageTopic: topic
+    });
     const hist = (b.revisionHistory || []).slice().reverse();
     const effectiveConfidence = hist.length > 0 ? hist[0].newConfidence : b.confidence;
     const confColor = effectiveConfidence >= 75 ? '#10b981' : effectiveConfidence >= 60 ? '#f59e0b' : '#ef4444';
@@ -1576,10 +1589,11 @@ document.addEventListener('click', async e => {
           </div>`).join('')
       : `<div style="color:#71717a;font-size:12px;padding:12px 0;">No revision history yet.</div>`;
 
-    const evidenceLinks = (b.evidence || []).slice(0, 5).map(ev =>
+    const evidenceLinks = supportingEntries.map(ev =>
       `<div style="font-size:11px;padding:4px 0;border-bottom:1px solid #27272a;">
-        <a href="${esc(ev.link)}" target="_blank" style="color:#60a5fa;text-decoration:none;">${esc(ev.source || ev.link)}</a>
-        <span style="color:#71717a;margin-left:6px;">${timeAgo(ev.ingestedAt || ev.date)}</span>
+        <a href="${esc(ev.url)}" target="_blank" style="color:#60a5fa;text-decoration:none;">${esc(ev.title || ev.source || ev.url)}</a>
+        <span style="color:#71717a;margin-left:6px;">${esc(ev.source || 'Unknown')}</span>
+        <span style="color:#71717a;margin-left:6px;">${timeAgo(ev.ingestedAt || ev.publishedAt)}</span>
       </div>`).join('');
 
     const stWatch = structuredBeliefAnalysis(b);
@@ -1597,6 +1611,34 @@ document.addEventListener('click', async e => {
         <span id="t-paste-status" style="font-size:11px;color:#71717a;margin-left:10px;"></span>
       </div>`;
 
+    const audienceContext = formatAudienceProfileLines({
+      career: radarCareer,
+      account: radarAccount,
+      role: radarRole,
+      keywords: radarKeywords,
+    });
+    const evidenceWithArticles = supportingEntries.map(entry => {
+      const summaryLine = entry.summary ? `\n  ${entry.summary}` : '';
+      const urlLine = entry.url ? `\n  URL: ${entry.url}` : '';
+      const unavailable = !entry.summary && entry.url ? ' (article details not available)' : '';
+      return `- "${entry.title}" (${entry.source})${summaryLine}${urlLine}${unavailable}`;
+    }).join('\n\n');
+    const promptToUse = buildBeliefAnalysisPrompt(b, evidenceWithArticles, {
+      includeStructuredOutput: true,
+      audienceContext,
+    });
+    const noteParts = [];
+    if (totalCount > 0 && resolvedCount < totalCount) {
+      noteParts.push(`${resolvedCount}/${totalCount} supporting articles had full details`);
+    }
+    if (excludedCount > 0) {
+      noteParts.push(`${excludedCount} supporting article(s) were excluded for low-trust or promotional sourcing`);
+    }
+    const completenessNote = noteParts.length > 0
+      ? `\n\nNOTE: ${noteParts.join(' · ')}. Analysis based on ${resolvedCount === 0 ? 'URLs only' : resolvedCount < totalCount ? 'partial evidence' : 'the filtered evidence set'}.`
+      : '';
+    const fullPrompt = promptToUse + completenessNote;
+
     openModal(
       'Belief Detail',
       `${effectiveConfidence}%`,
@@ -1610,46 +1652,12 @@ document.addEventListener('click', async e => {
        ${watchItemsHtml}
        ${pasteSection}`
     );
+    modalContent = fullPrompt;
 
     // Wire Send to Model for belief analysis
-    const topic = b.topic || selectedTopic;
-    const articlesFromState = state[topic]?.articles || [];
-
     const llmBtn = document.getElementById('t-modal-llm');
     if (llmBtn) {
       llmBtn.onclick = async () => {
-        // Always resolve evidence from storage first — ensures full article context for analysis
-        const { evidenceWithArticles, resolvedCount, totalCount, excludedCount } = await resolveEvidenceArticlesAsync(b, {
-          topic,
-          articlesFromState,
-          storageKey: 'trackerArticles',
-          storageTopic: topic
-        });
-
-        const audienceContext = formatAudienceProfileLines({
-          career: radarCareer,
-          account: radarAccount,
-          role: radarRole,
-          keywords: radarKeywords,
-        });
-        const promptToUse = buildBeliefAnalysisPrompt(b, evidenceWithArticles, {
-          includeStructuredOutput: true,
-          audienceContext,
-        });
-
-        // Append evidence completeness note when partial (helps user/LLM interpret quality)
-        const noteParts = [];
-        if (totalCount > 0 && resolvedCount < totalCount) {
-          noteParts.push(`${resolvedCount}/${totalCount} supporting articles had full details`);
-        }
-        if (excludedCount > 0) {
-          noteParts.push(`${excludedCount} supporting article(s) were excluded for low-trust or promotional sourcing`);
-        }
-        const completenessNote = noteParts.length > 0
-          ? `\n\nNOTE: ${noteParts.join(' · ')}. Analysis based on ${resolvedCount === 0 ? 'URLs only' : resolvedCount < totalCount ? 'partial evidence' : 'the filtered evidence set'}.`
-          : '';
-        const fullPrompt = promptToUse + completenessNote;
-
         const { llm, customLlmBaseUrl } = await getKeys();
         await handoffPromptToLLM(llm, fullPrompt, customLlmBaseUrl);
       };
