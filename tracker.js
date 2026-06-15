@@ -1002,6 +1002,7 @@ function setModalFooterHidden(hidden = false) {
 function openModal(title, badge, badgeStyle, content, type = 'default', hideBadge = false) {
   currentModalType = type;
   const titleEl = document.getElementById('t-modal-title');
+  const closeBtn = document.getElementById('t-modal-close');
   if (type === 'dispatch' && title === MORNING_BRIEF_TITLE) {
     titleEl.innerHTML = newsletterModalTitleHTML();
   } else {
@@ -1021,6 +1022,11 @@ function openModal(title, badge, badgeStyle, content, type = 'default', hideBadg
   const composer     = document.getElementById('t-brief-composer');
   const cadenceTgl   = document.getElementById('t-cadence-toggle');
   const sendTestBtn  = document.getElementById('t-modal-send-test');
+
+  // Some modal flows temporarily disable the shared close button while a
+  // destructive or async action is in flight. Always reset it on open so
+  // later popups inherit a functional X button.
+  if (closeBtn) closeBtn.disabled = false;
 
   // Always show loading body; composer only shown after content is ready
   if (body)     { body.innerHTML = content; body.style.display = ''; }
@@ -1068,11 +1074,13 @@ function closeModal() {
   const composer = document.getElementById('t-brief-composer');
   const cadenceTgl = document.getElementById('t-cadence-toggle');
   const badgeEl    = document.getElementById('t-modal-badge');
+  const closeBtn   = document.getElementById('t-modal-close');
   if (modal)    modal.classList.remove('t-modal--dispatch');
   if (body)     body.style.display = '';
   if (composer) composer.style.display = 'none';
   if (cadenceTgl) cadenceTgl.style.display = 'none';
   if (badgeEl)   badgeEl.style.display = '';
+  if (closeBtn)  closeBtn.disabled = false;
   setModalFooterHidden(false);
 }
 
