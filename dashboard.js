@@ -5,6 +5,8 @@ import { resolveEvidenceArticlesAsync, buildBeliefAnalysisPrompt, formatAudience
 const COGNESION_RUNTIME = globalThis.COGNESION_RUNTIME || { mode: 'extension', isHttpRuntime: false, apiBaseUrl: '' };
 const WEB_RUNTIME = COGNESION_RUNTIME.mode === 'web';
 const WEB_API_BASE_URL = COGNESION_RUNTIME.apiBaseUrl || '';
+const DEFAULT_LLM_MODEL = 'claude';
+const DEFAULT_CUSTOM_LLM_BASE_URL = 'https://www.google.com/';
 const AUTH_STATE = {
   client: null,
   config: null,
@@ -19,6 +21,35 @@ const AUTH_STATE = {
 const ADMIN_BYPASS_STORAGE_KEY = 'cognesionAdminBypassToken';
 
 globalThis.COGNESION_AUTH = globalThis.COGNESION_AUTH || {};
+
+function normalizeCustomLlmBaseUrl(value) {
+  const normalized = String(value || '').trim();
+  return normalized || DEFAULT_CUSTOM_LLM_BASE_URL;
+}
+
+async function getStoredLlmPreferences() {
+  if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+    return { llmModel: DEFAULT_LLM_MODEL, customLlmBaseUrl: DEFAULT_CUSTOM_LLM_BASE_URL };
+  }
+  const stored = await chrome.storage.local.get(['llmModel', 'customLlmBaseUrl']);
+  return {
+    llmModel: stored.llmModel || DEFAULT_LLM_MODEL,
+    customLlmBaseUrl: normalizeCustomLlmBaseUrl(stored.customLlmBaseUrl)
+  };
+}
+
+function syncDashboardLlmUi(model, customBaseUrl) {
+  if (!ui?.llmSelector) return;
+  ui.llmSelector.value = model || DEFAULT_LLM_MODEL;
+  if (ui.customLlmInput) {
+    ui.customLlmInput.style.display = ui.llmSelector.value === 'custom' ? 'block' : 'none';
+    ui.customLlmInput.value = customBaseUrl && customBaseUrl !== DEFAULT_CUSTOM_LLM_BASE_URL ? customBaseUrl : '';
+  }
+  if (ui.btnSendToModel) {
+    const selectedLabel = ui.llmSelector.options[ui.llmSelector.selectedIndex]?.text || 'Model';
+    ui.btnSendToModel.innerText = `Send to ${selectedLabel}`;
+  }
+}
 
 function readStoredAdminBypassToken() {
   try {
@@ -1845,19 +1876,10 @@ function getDashboardLLMBaseUrl(model) {
 }
 
 async function handoffDashboardPromptToLLM(model, prompt, customBaseUrl = '') {
-  const target = model || 'claude';
+  const target = model || DEFAULT_LLM_MODEL;
   const baseUrl = target === 'custom'
-    ? (customBaseUrl || 'https://www.google.com/')
+    ? normalizeCustomLlmBaseUrl(customBaseUrl)
     : getDashboardLLMBaseUrl(target);
-
-  if (['claude', 'gemini', 'lechat'].includes(target)) {
-    await chrome.storage.local.set({
-      pendingPrompt: prompt,
-      pendingPromptTarget: target
-    });
-    window.open(baseUrl, '_blank');
-    return;
-  }
 
   try {
     await navigator.clipboard.writeText(prompt);
@@ -3238,7 +3260,7 @@ function openPowerPrompt(useCase, title, link, query, type = 'news', context = '
   lastPowerPromptCall = now;
   console.log('✅ openPowerPrompt executing for:', useCase.substring(0, 50));
 
-  const llm = ui.llmSelector ? ui.llmSelector.value : 'claude';
+  const llm = ui.llmSelector ? ui.llmSelector.value : DEFAULT_LLM_MODEL;
   const cleanedContext = cleanText(context || '').substring(0, 500);
   let prompt;
   if (title && link) {
@@ -4249,7 +4271,7 @@ async function init() {
     watchAndTranslate();
   });
 
-  chrome.storage.local.get(['hotList', 'highlightUrl', 'dashboardCache', 'radarLanguage'], (data) => {
+  chrome.storage.local.get(['hotList', 'highlightUrl', 'dashboardCache', 'radarLanguage', 'llmModel', 'customLlmBaseUrl'], (data) => {
     // Set language FIRST so translatePage() works immediately when feed renders
     if (data.radarLanguage) {
       radarLanguage = data.radarLanguage;
@@ -4260,6 +4282,7 @@ async function init() {
       loadTranslationCache(data.radarLanguage);
     }
     renderHotChips(data.hotList || []);
+    syncDashboardLlmUi(data.llmModel || DEFAULT_LLM_MODEL, normalizeCustomLlmBaseUrl(data.customLlmBaseUrl));
 
     // Re-scan if cache is missing, stale (>24h), or it's a new calendar day
     const cache = data.dashboardCache;
@@ -4320,6 +4343,10 @@ async function init() {
     const customInput = document.getElementById('custom-llm-input');
     customInput.style.display = e.target.value === 'custom' ? 'block' : 'none';
     if (ui.btnSendToModel) ui.btnSendToModel.innerText = `Send to ${e.target.options[e.target.selectedIndex].text}`;
+    chrome.storage.local.set({ llmModel: e.target.value });
+  });
+  ui.customLlmInput?.addEventListener('input', (e) => {
+    chrome.storage.local.set({ customLlmBaseUrl: e.target.value.trim() });
   });
 
   // ── SAVED ARTICLES (btn-toggle-panel repurposed from Pro Controls) ──
@@ -4451,71 +4478,8 @@ async function init() {
           : '';
         const fullPrompt = prompt + completenessNote;
 
-        const llm = ui.llmSelector ? ui.llmSelector.value : 'claude';
-        const llmLabels = { claude: 'Claude', chatgpt: 'ChatGPT', perplexity: 'Perplexity', gemini: 'Gemini', lechat: 'Le Chat' };
-        const llmLabel = llmLabels[llm] || llm;
-        const urls = { claude: 'https://claude.ai/new', chatgpt: 'https://chatgpt.com/', perplexity: 'https://www.perplexity.ai/', gemini: 'https://gemini.google.com/app', lechat: 'https://chat.mistral.ai/chat' };
-
-        // For Claude and ChatGPT: call API directly and render inline — no tab switching needed.
-        // For other LLMs: copy to clipboard and open their web UI.
-        if (llm === 'claude' || llm === 'chatgpt') {
-          // Show loading state inline — keep modal open
-          ui.analystContent.innerHTML = `
-            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; padding:80px 32px; gap:16px;">
-              <div style="width:40px; height:40px; border:3px solid #27272a; border-top-color:#60a5fa; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
-              <div style="font-size:13px; color:#71717a;">Analyzing belief with ${llmLabel}…</div>
-            </div>
-          `;
-          // Ensure spin animation exists
-          if (!document.getElementById('spin-style')) {
-            const s = document.createElement('style');
-            s.id = 'spin-style';
-            s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
-            document.head.appendChild(s);
-          }
-
-          analyzeBeliefWithAPI(fullPrompt, llm).then(analysisText => {
-            if (!analysisText) {
-              ui.analystContent.innerHTML = `<div style="padding:32px; color:#ef4444;">No response received from ${llmLabel}.</div>`;
-              return;
-            }
-            const structured = validateStructuredAnalysis(parseStructuredAnalysis(analysisText));
-            if (structured) {
-              const now = new Date().toISOString();
-              chrome.storage.local.get(['hypotheses'], (data) => {
-                const hypotheses = data.hypotheses || [];
-                const idx = hypotheses.findIndex(h => h.id === belief.id);
-                if (idx >= 0) {
-                  hypotheses[idx].lastAnalysis = { date: now, llm: llmLabel, text: analysisText, structured };
-                  if (structured.watch_items?.length) hypotheses[idx].watchItems = structured.watch_items;
-                  chrome.storage.local.set({ hypotheses });
-                }
-              });
-            }
-            renderBeliefAnalysisResult(belief, analysisText, llmLabel, { structured });
-          }).catch(err => {
-            ui.analystContent.innerHTML = `
-              <div style="padding:32px;">
-                <div style="color:#ef4444; margin-bottom:16px;">⚠ ${llmLabel} API error: ${err.message}</div>
-                <button id="belief-err-clipboard" style="padding:8px 16px; background:#27272a; border:none; border-radius:6px; color:#a1a1aa; font-size:12px; cursor:pointer;">Copy prompt to clipboard instead</button>
-              </div>`;
-            document.getElementById('belief-err-clipboard')?.addEventListener('click', () => {
-              navigator.clipboard.writeText(fullPrompt).then(() => {
-                window.open(urls[llm] || urls.claude, '_blank');
-                ui.analystModal.classList.remove('active');
-                delete ui.analystModal.dataset.activeBelief;
-              });
-            });
-          });
-          // Don't close modal — analysis renders inside it
-          return;
-        }
-
-        // Clipboard fallback for Perplexity, Gemini, Le Chat, Custom
-        navigator.clipboard.writeText(fullPrompt).then(() => {
-          alert(`Full belief analysis copied to clipboard — paste it when the window opens (Cmd+V / Ctrl+V).`);
-        });
-        window.open(urls[llm] || urls.claude, '_blank');
+        const { llmModel, customLlmBaseUrl } = await getStoredLlmPreferences();
+        await handoffDashboardPromptToLLM(llmModel, fullPrompt, customLlmBaseUrl);
         ui.analystModal.classList.remove('active');
         delete ui.analystModal.dataset.activeBelief;
         return;

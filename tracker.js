@@ -17,6 +17,8 @@ const engine = new ExaEngine();
 const COGNESION_RUNTIME = globalThis.COGNESION_RUNTIME || { mode: 'extension', isHttpRuntime: false, apiBaseUrl: '' };
 const WEB_RUNTIME = COGNESION_RUNTIME.mode === 'web';
 const WEB_API_BASE_URL = COGNESION_RUNTIME.apiBaseUrl || '';
+const DEFAULT_LLM_MODEL = 'claude';
+const DEFAULT_CUSTOM_LLM_BASE_URL = 'https://www.google.com/';
 const AUTH_STATE = {
   client: null,
   config: null,
@@ -31,6 +33,51 @@ const AUTH_STATE = {
 const ADMIN_BYPASS_STORAGE_KEY = 'cognesionAdminBypassToken';
 
 globalThis.COGNESION_AUTH = globalThis.COGNESION_AUTH || {};
+
+function normalizeCustomLlmBaseUrl(value) {
+  const normalized = String(value || '').trim();
+  return normalized || DEFAULT_CUSTOM_LLM_BASE_URL;
+}
+
+async function getStoredLlmPreferences() {
+  const stored = await chrome.storage.local.get(['llmModel', 'customLlmBaseUrl']);
+  return {
+    llmModel: stored.llmModel || DEFAULT_LLM_MODEL,
+    customLlmBaseUrl: normalizeCustomLlmBaseUrl(stored.customLlmBaseUrl)
+  };
+}
+
+function syncTrackerLlmUi(model, customBaseUrl) {
+  const selector = document.getElementById('t-llm-selector');
+  const customInput = document.getElementById('custom-llm-input');
+  if (!selector) return;
+  selector.value = model || DEFAULT_LLM_MODEL;
+  if (customInput) {
+    customInput.style.display = selector.value === 'custom' ? 'block' : 'none';
+    customInput.value = customBaseUrl && customBaseUrl !== DEFAULT_CUSTOM_LLM_BASE_URL ? customBaseUrl : '';
+  }
+}
+
+async function wireTrackerLlmControls() {
+  const selector = document.getElementById('t-llm-selector');
+  const customInput = document.getElementById('custom-llm-input');
+  if (!selector || selector.dataset.bound === 'true') return;
+
+  const { llmModel, customLlmBaseUrl } = await getStoredLlmPreferences();
+  syncTrackerLlmUi(llmModel, customLlmBaseUrl);
+
+  selector.addEventListener('change', async (event) => {
+    const nextValue = event.target.value || DEFAULT_LLM_MODEL;
+    await chrome.storage.local.set({ llmModel: nextValue });
+    syncTrackerLlmUi(nextValue, customInput?.value || customLlmBaseUrl);
+  });
+
+  customInput?.addEventListener('input', async (event) => {
+    await chrome.storage.local.set({ customLlmBaseUrl: String(event.target.value || '').trim() });
+  });
+
+  selector.dataset.bound = 'true';
+}
 
 function readStoredAdminBypassToken() {
   try {
@@ -809,10 +856,11 @@ function beliefSavedAnalysisHtml(b) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function getKeys() {
-  return new Promise(r => chrome.storage.local.get(['openaiKey','openAiApiKey','anthropicKey','llmModel'], d => r({
+  return new Promise(r => chrome.storage.local.get(['openaiKey','openAiApiKey','anthropicKey','llmModel','customLlmBaseUrl'], d => r({
     openai: d.openaiKey || d.openAiApiKey || (WEB_RUNTIME ? '__server_proxy__' : null),
     anthropic: d.anthropicKey || (WEB_RUNTIME ? '__server_proxy__' : null),
-    llm: d.llmModel || 'claude'
+    llm: d.llmModel || DEFAULT_LLM_MODEL,
+    customLlmBaseUrl: normalizeCustomLlmBaseUrl(d.customLlmBaseUrl)
   })));
 }
 
@@ -828,18 +876,11 @@ function getLLMBaseUrl(model) {
   return LLM_BASE_URLS[model] || LLM_BASE_URLS.claude;
 }
 
-async function handoffPromptToLLM(model, prompt) {
-  const target = model || 'claude';
-  const baseUrl = getLLMBaseUrl(target);
-
-  if (['claude', 'gemini', 'lechat'].includes(target)) {
-    await chrome.storage.local.set({
-      pendingPrompt: prompt,
-      pendingPromptTarget: target
-    });
-    window.open(baseUrl, '_blank');
-    return;
-  }
+async function handoffPromptToLLM(model, prompt, customBaseUrl = '') {
+  const target = model || DEFAULT_LLM_MODEL;
+  const baseUrl = target === 'custom'
+    ? normalizeCustomLlmBaseUrl(customBaseUrl)
+    : getLLMBaseUrl(target);
 
   try {
     await navigator.clipboard.writeText(prompt);
@@ -1210,8 +1251,8 @@ async function runIntelligenceBrief(article) {
 
     // Wire Send to Model button
     document.getElementById('t-modal-llm').onclick = async () => {
-      const { llm: model } = await getKeys();
-      await handoffPromptToLLM(model, `Intelligence Brief context:\n${article.title}\n${article.link}\n\nAnalyse this article deeply.`);
+      const { llm: model, customLlmBaseUrl } = await getKeys();
+      await handoffPromptToLLM(model, `Intelligence Brief context:\n${article.title}\n${article.link}\n\nAnalyse this article deeply.`, customLlmBaseUrl);
     };
   } catch (e) {
     setModalBody(`<p style="color:#ef4444;padding:24px;">Error: ${e.message}</p>`);
@@ -1308,9 +1349,9 @@ ${articleList}`;
 
     // Wire Send to Model button
     document.getElementById('t-modal-llm').onclick = async () => {
-      const { llm: model } = await getKeys();
+      const { llm: model, customLlmBaseUrl } = await getKeys();
       const ctx = articles.slice(0, 10).map(a => `- ${a.title} (${a.source}): ${a.link}`).join('\n');
-      await handoffPromptToLLM(model, `Topic: "${topic}"\n\nArticles:\n${ctx}\n\nGenerate a strategic intelligence brief.`);
+      await handoffPromptToLLM(model, `Topic: "${topic}"\n\nArticles:\n${ctx}\n\nGenerate a strategic intelligence brief.`, customLlmBaseUrl);
     };
 
   } catch (e) {
@@ -1609,8 +1650,8 @@ document.addEventListener('click', async e => {
           : '';
         const fullPrompt = promptToUse + completenessNote;
 
-        const { llm } = await getKeys();
-        await handoffPromptToLLM(llm, fullPrompt);
+        const { llm, customLlmBaseUrl } = await getKeys();
+        await handoffPromptToLLM(llm, fullPrompt, customLlmBaseUrl);
       };
     }
 
@@ -1719,13 +1760,13 @@ document.addEventListener('click', async e => {
   const row = e.target.closest('.t-pt-row[data-action="llm"]');
   if (row) {
     closeAllTooltips();
-    const { llm } = await getKeys();
+    const { llm, customLlmBaseUrl } = await getKeys();
     let prompt = row.dataset.prompt || '';
     const articleLink = row.closest('.t-article-wrap')?._articleData?.link || '';
     if (articleLink && !prompt.includes(articleLink)) {
       prompt += `\n\nSource URL: ${articleLink}`;
     }
-    await handoffPromptToLLM(llm, prompt);
+    await handoffPromptToLLM(llm, prompt, customLlmBaseUrl);
     return;
   }
 
@@ -4988,6 +5029,7 @@ function loadDispatchScheduleIntoPanel() {
 async function init() {
   wireModal();
   wireProControls();
+  await wireTrackerLlmControls();
 
   chrome.storage.local.get([
     'hotList',

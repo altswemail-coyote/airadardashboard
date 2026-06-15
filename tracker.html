@@ -326,6 +326,27 @@
       transition: background 0.15s, border-color 0.15s;
     }
     .t-set-tab-add:hover { background: rgba(59,130,246,0.2); border-color: var(--accent); }
+    .t-set-tabs-llm {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      align-self: center;
+    }
+    .t-set-tabs-llm .model-label {
+      flex-shrink: 0;
+    }
+    .t-set-tabs-llm .model-select {
+      min-width: 148px;
+      height: 40px;
+      border-radius: 12px;
+    }
+    .t-set-tabs-wrap #custom-llm-input {
+      width: 176px;
+      height: 40px;
+      border-radius: 12px;
+      display: none;
+    }
 
     /* Topic Controls — matches newsletter primary button (detail panel) */
     #t-topic-controls-btn.t-action-btn.primary {
@@ -1891,6 +1912,8 @@
       border-color: rgba(239,68,68,0.35);
     }
     .t-set-tab-add,
+    .t-set-tabs-llm .model-select,
+    .t-set-tabs-wrap #custom-llm-input,
     #t-topic-controls-btn.t-action-btn.primary {
       min-height: 40px;
       border-radius: 12px;
@@ -2255,6 +2278,10 @@
         flex-direction: column;
         align-items: flex-start;
       }
+      .t-set-tabs-llm {
+        width: 100%;
+        justify-content: flex-start;
+      }
       .t-set-context-side {
         width: 100%;
         align-items: flex-start;
@@ -2307,6 +2334,18 @@
 <div class="t-set-tabs-wrap" id="t-set-tabs-wrap">
   <div class="t-set-tabs-label">Boards</div>
   <div class="t-set-tabs" id="t-set-tabs" role="tablist" aria-label="Topic boards"></div>
+  <div class="t-set-tabs-llm" aria-label="Model routing controls">
+    <span class="model-label">MODEL</span>
+    <select id="t-llm-selector" class="model-select">
+      <option value="claude">Claude</option>
+      <option value="chatgpt">ChatGPT</option>
+      <option value="perplexity">Perplexity</option>
+      <option value="gemini">Gemini</option>
+      <option value="lechat">Mistral Le Chat</option>
+      <option value="custom">Custom URL...</option>
+    </select>
+    <input type="text" id="custom-llm-input" placeholder="https://site.com/?q=" />
+  </div>
   <button type="button" class="t-set-tab-add" id="t-set-tab-add" title="Add a new board">+ Board</button>
   <button type="button" class="t-action-btn primary" id="t-topic-controls-btn" data-action="manage-panel">Topic Setup</button>
 </div>
