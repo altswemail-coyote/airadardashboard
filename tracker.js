@@ -975,6 +975,146 @@ function syncDispatchCadenceUI(freq) {
   if (limitEl) limitEl.textContent = `Choose up to ${limit} weekday${limit === 1 ? '' : 's'}.`;
 }
 
+function dispatchHourTo24(hour, ampm) {
+  const parsed = Number(hour);
+  const safeHour = Number.isInteger(parsed) ? Math.min(12, Math.max(1, parsed)) : 7;
+  const upperAmpm = String(ampm || 'AM').toUpperCase();
+  if (upperAmpm === 'PM') return safeHour === 12 ? 12 : safeHour + 12;
+  return safeHour === 12 ? 0 : safeHour;
+}
+
+function readDispatchScheduleControls() {
+  const freq = normalizeDispatchFreq(document.getElementById('t-dispatch-freq')?.value || DEFAULT_DISPATCH_FREQ);
+  const days = [...document.querySelectorAll('#t-sched-days .t-sched-day.active')].map(el => el.dataset.day);
+  const selectedDeliveryDays = clampDispatchDays(days, freq);
+  const hour = document.getElementById('t-sched-hour')?.value || DEFAULT_DISPATCH_SCHEDULE.hour;
+  const min = document.getElementById('t-sched-min')?.value || DEFAULT_DISPATCH_SCHEDULE.min;
+  const ampm = document.getElementById('t-sched-ampm')?.value || DEFAULT_DISPATCH_SCHEDULE.ampm;
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const includeHomeNews = document.getElementById('t-dispatch-include-home-news')?.checked ?? false;
+
+  return {
+    briefsPerWeek: Number(freq),
+    selectedDeliveryDays,
+    sendHour: dispatchHourTo24(hour, ampm),
+    sendMinute: Number(min),
+    timezone,
+    includeHomeNews,
+    legacySchedule: {
+      days: selectedDeliveryDays,
+      hour,
+      min,
+      ampm,
+      tz: timezone
+    }
+  };
+}
+
+function readDispatchRecipientEmail() {
+  return String(document.getElementById('t-user-email')?.value || '').trim();
+}
+
+function selectedDispatchTopicNames() {
+  return [...document.querySelectorAll('.t-dispatch-chk:checked')].map(c => c.value);
+}
+
+function selectedDispatchTopicIds(topicNames) {
+  return topicNames
+    .map(topic => findTopicRecord(topic)?.record?.id)
+    .filter(Boolean);
+}
+
+async function buildDispatchEmailDataSnapshot() {
+  if (lastEmailData) return lastEmailData;
+
+  const checked = selectedDispatchTopicNames();
+  if (!checked.length) return null;
+
+  const freq = normalizeDispatchFreq(document.getElementById('t-dispatch-freq')?.value || DEFAULT_DISPATCH_FREQ);
+  const includeHomeNews = document.getElementById('t-dispatch-include-home-news')?.checked ?? false;
+  const dashCache = await new Promise(r => chrome.storage.local.get(['dashboardCache'], r));
+  const homeFeed = includeHomeNews ? normalizeDashboardHomeFeed(dashCache.dashboardCache) : null;
+  return buildEmailData(checked, freq, { includeHomeNews, homeFeed });
+}
+
+function buildRadarEmailText(data = {}) {
+  const lines = [
+    `${MORNING_BRIEF_TITLE} · ${data.cadence || 'Morning Brief'}`,
+    data.dateLabel || new Date().toLocaleDateString('en-US'),
+    data.profileLine ? `Profile: ${data.profileLine}` : '',
+    ''
+  ].filter(line => line !== '');
+
+  (data.topics || []).forEach(topic => {
+    lines.push(`${topic.name} (${topic.confidence ?? '—'}%)`);
+    (topic.bullets?.length ? topic.bullets : ['No signal data yet']).forEach(bullet => {
+      lines.push(`- ${bullet}`);
+    });
+    (topic.recentArticles || []).forEach(article => {
+      lines.push(`  Source: ${article.title}${article.source ? ` · ${article.source}` : ''}${article.link ? ` · ${article.link}` : ''}`);
+    });
+    lines.push('');
+  });
+
+  if (data.includeHomeNews && data.homeFeed?.items?.length) {
+    lines.push('Top AI News');
+    data.homeFeed.items.forEach(item => {
+      lines.push(`- ${item.dateLabel}: ${item.summary || item.title} · ${item.source || ''} · ${item.link || ''}`.trim());
+    });
+  }
+
+  return lines.join('\n').trim();
+}
+
+function absolutizeEmailAssetUrls(html) {
+  const origin = typeof window !== 'undefined' && window.location?.origin ? window.location.origin : '';
+  if (!origin) return html;
+  return String(html || '').replace(/src="icons\//g, `src="${origin}/icons/`);
+}
+
+async function buildDispatchBriefPayload() {
+  const emailData = await buildDispatchEmailDataSnapshot();
+  if (!emailData) {
+    throw new Error('Select at least one tracked topic before saving or sending a brief.');
+  }
+
+  const schedule = readDispatchScheduleControls();
+  const recipientEmail = readDispatchRecipientEmail();
+  const topicNames = selectedDispatchTopicNames();
+  return {
+    recipientEmail,
+    schedule,
+    emailData,
+    topicIds: selectedDispatchTopicIds(topicNames),
+    subjectLine: `Your Cognesion Morning Brief · ${emailData.cadence || getDispatchCadenceLabel(schedule.briefsPerWeek)}`,
+    htmlBody: absolutizeEmailAssetUrls(buildRadarEmailHTML(emailData, { mode: 'desktop' })),
+    textBody: buildRadarEmailText(emailData)
+  };
+}
+
+async function saveDeliverySettingsToServer() {
+  const schedule = readDispatchScheduleControls();
+  return webApiRequest('/api/delivery-settings', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      recipientEmail: readDispatchRecipientEmail(),
+      ...schedule
+    })
+  });
+}
+
+async function sendTestBriefToServer() {
+  const payload = await buildDispatchBriefPayload();
+  if (!payload.recipientEmail) {
+    throw new Error('Enter your email before sending a test brief.');
+  }
+
+  return webApiRequest('/api/briefs/send-test', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
 // Logo + text: align to baseline, font-size ≈ 55% of logo height (x-height)
 const COGNESION_WORDMARK_INLINE = '<span style="display:inline-flex;align-items:center;gap:6px;vertical-align:baseline;"><span style="width:10px;height:10px;border-radius:999px;background:linear-gradient(135deg,#7dd3fc,#3b82f6);box-shadow:0 0 0 3px rgba(59,130,246,0.18);display:inline-block;"></span><span style="font-family:Arial, Helvetica, sans-serif;font-weight:700;letter-spacing:0.01em;color:#f4f4f5;">Cognesion</span></span>';
 const COGNESION_WORDMARK_SMALL = '<span style="display:inline-flex;align-items:center;gap:5px;vertical-align:baseline;"><span style="width:8px;height:8px;border-radius:999px;background:linear-gradient(135deg,#7dd3fc,#3b82f6);display:inline-block;"></span><span style="font-family:Arial, Helvetica, sans-serif;font-weight:700;letter-spacing:0.01em;color:#f4f4f5;">Cognesion</span></span>';
@@ -4463,7 +4603,14 @@ function openDispatchModalWithControls() {
     cadenceTgl.style.display = '';
     syncDispatchCadenceUI(freq);
   }
-  if (sendTestBtn) sendTestBtn.style.display = '';
+  if (sendTestBtn) {
+    sendTestBtn.style.display = '';
+    sendTestBtn.disabled = false;
+    sendTestBtn.textContent = 'Send Test';
+    sendTestBtn.title = '';
+    sendTestBtn.style.opacity = '';
+    sendTestBtn.style.cursor = '';
+  }
 
   ['t-modal-copy', 't-export-wrap', 't-modal-llm'].forEach(id => {
     const el = document.getElementById(id);
@@ -4939,24 +5086,40 @@ function wireModal() {
   // Confirm schedule save
   const schedConfirm = document.getElementById('t-sched-confirm');
   if (schedConfirm) {
-    schedConfirm.addEventListener('click', () => {
-      const freq = normalizeDispatchFreq(document.getElementById('t-dispatch-freq')?.value || DEFAULT_DISPATCH_FREQ);
-      const days = [...document.querySelectorAll('#t-sched-days .t-sched-day.active')].map(el => el.dataset.day);
-      const normalizedDays = clampDispatchDays(days, freq);
-      const hour = document.getElementById('t-sched-hour').value;
-      const min  = document.getElementById('t-sched-min').value;
-      const ampm = document.getElementById('t-sched-ampm').value;
-      const tz   = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      chrome.storage.local.set({ dispatchSchedule: { days: normalizedDays, hour, min, ampm, tz } }, () => {
+    schedConfirm.addEventListener('click', async () => {
+      const originalText = schedConfirm.textContent;
+      const schedule = readDispatchScheduleControls();
+      const recipientEmail = readDispatchRecipientEmail();
+      schedConfirm.disabled = true;
+      schedConfirm.textContent = WEB_RUNTIME ? 'Saving…' : 'Saving…';
+
+      try {
+        if (WEB_RUNTIME) {
+          await saveDeliverySettingsToServer();
+        }
+
+        await new Promise(resolve => chrome.storage.local.set({
+          dispatchSchedule: schedule.legacySchedule,
+          radarEmail: recipientEmail
+        }, resolve));
+
         schedConfirm.textContent = '✓ Saved';
         schedConfirm.classList.add('saved');
         setTimeout(() => {
           schedConfirm.textContent = 'Confirm Schedule';
           schedConfirm.classList.remove('saved');
+          schedConfirm.disabled = false;
           if (schedPanel) schedPanel.classList.remove('open');
           if (schedBtn) schedBtn.textContent = 'Set Morning Delivery';
         }, 1800);
-      });
+      } catch (error) {
+        schedConfirm.textContent = 'Save failed';
+        alert(error?.message || 'Unable to save Morning Brief delivery settings.');
+        setTimeout(() => {
+          schedConfirm.textContent = originalText || 'Confirm Schedule';
+          schedConfirm.disabled = false;
+        }, 1800);
+      }
     });
   }
 
@@ -4998,14 +5161,39 @@ function wireModal() {
     });
   }
 
-  // ── Send Test (server-side delivery lands after migration) ──
+  // ── Send Test ──
   const sendTestBtnEl = document.getElementById('t-modal-send-test');
   if (sendTestBtnEl) {
-    sendTestBtnEl.disabled = true;
-    sendTestBtnEl.textContent = 'Send test (live soon)';
-    sendTestBtnEl.title = 'Live test sends move server-side during migration.';
-    sendTestBtnEl.style.opacity = '0.6';
-    sendTestBtnEl.style.cursor = 'not-allowed';
+    sendTestBtnEl.disabled = false;
+    sendTestBtnEl.textContent = 'Send Test';
+    sendTestBtnEl.title = 'Send the current Morning Brief preview to your email.';
+    sendTestBtnEl.style.opacity = '';
+    sendTestBtnEl.style.cursor = '';
+    sendTestBtnEl.addEventListener('click', async () => {
+      const originalText = sendTestBtnEl.textContent;
+      sendTestBtnEl.disabled = true;
+      sendTestBtnEl.textContent = 'Sending…';
+
+      try {
+        if (!WEB_RUNTIME) {
+          throw new Error('Test email delivery is available in the web app after sign-in.');
+        }
+
+        await sendTestBriefToServer();
+        sendTestBtnEl.textContent = '✓ Sent';
+        sendTestBtnEl.style.color = '#86efac';
+        await new Promise(resolve => chrome.storage.local.set({ radarEmail: readDispatchRecipientEmail() }, resolve));
+      } catch (error) {
+        sendTestBtnEl.textContent = 'Send failed';
+        alert(error?.message || 'Unable to send the test Morning Brief.');
+      } finally {
+        setTimeout(() => {
+          sendTestBtnEl.textContent = originalText || 'Send Test';
+          sendTestBtnEl.disabled = false;
+          sendTestBtnEl.style.color = '';
+        }, 2000);
+      }
+    });
   }
 
 }

@@ -5,15 +5,19 @@ import { fileURLToPath } from "url";
 import { ExaEngine } from "../exa-engine.js";
 import {
   checkSupabaseConnection,
+  createBriefRun,
   createTopic,
   createTopicBoard,
   deleteTopic,
   deleteTopicBoard,
+  getDeliveryWorkspace,
   getSupabaseBrowserConfig,
   getSupabaseConfigStatus,
+  listBriefRuns,
   listTopicBoards,
   resolveAdminBypassUser,
   resolveAuthenticatedUser,
+  saveDeliveryWorkspace,
   updateTopic,
   updateTopicBoard
 } from "./supabase/client.js";
@@ -98,9 +102,101 @@ const RUNTIME_STATUS = {
   webTopicsLive: true,
   webTrackingLive: true,
   webAiProxyLive: true,
-  webMorningBriefDeliveryLive: false,
+  webMorningBriefDeliveryLive: true,
   webBillingLive: false
 };
+
+function trimString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeEmail(value) {
+  return trimString(value).toLowerCase();
+}
+
+function looksLikeEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizeEmail(value));
+}
+
+function normalizeInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeBriefsPerWeek(value) {
+  const parsed = Number(value);
+  return [1, 3, 5].includes(parsed) ? parsed : 1;
+}
+
+function stripHtmlToText(html) {
+  return trimString(html)
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|table|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}
+
+function normalizeDeliveryPayload(body = {}) {
+  const schedule = body.schedule && typeof body.schedule === "object" ? body.schedule : body;
+  const briefsPerWeek = normalizeBriefsPerWeek(schedule.briefsPerWeek || schedule.freq);
+  const selectedDeliveryDays = Array.isArray(schedule.selectedDeliveryDays)
+    ? schedule.selectedDeliveryDays
+    : Array.isArray(schedule.days)
+      ? schedule.days
+      : [];
+
+  return {
+    recipientEmail: normalizeEmail(body.recipientEmail || schedule.recipientEmail || body.email),
+    briefsPerWeek,
+    selectedDeliveryDays,
+    sendHour: normalizeInteger(schedule.sendHour, 7, 0, 23),
+    sendMinute: normalizeInteger(schedule.sendMinute, 0, 0, 59),
+    timezone: trimString(schedule.timezone || schedule.tz) || "America/Chicago",
+    includeHomeNews: Boolean(schedule.includeHomeNews ?? body.includeHomeNews),
+    enabled: schedule.enabled !== false
+  };
+}
+
+function normalizeBriefPayload(body = {}) {
+  const emailData = body.emailData && typeof body.emailData === "object" ? body.emailData : {};
+  const delivery = normalizeDeliveryPayload(body);
+  const cadence = trimString(emailData.cadence) || `${delivery.briefsPerWeek} Brief${delivery.briefsPerWeek === 1 ? "" : "s"} / Week`;
+  const subjectLine = trimString(body.subjectLine || emailData.subjectLine)
+    || `Your Cognesion Morning Brief · ${cadence}`;
+  const htmlBody = trimString(body.htmlBody || body.html || emailData.htmlBody || emailData.html);
+  const textBody = trimString(body.textBody || body.text || emailData.textBody || emailData.text)
+    || stripHtmlToText(htmlBody);
+
+  if (!htmlBody && !textBody) {
+    const error = new Error("Morning Brief content is required before it can be saved or sent.");
+    error.status = 400;
+    throw error;
+  }
+
+  return {
+    ...delivery,
+    subjectLine,
+    htmlBody: htmlBody || `<pre>${textBody}</pre>`,
+    textBody,
+    model: trimString(body.model || emailData.model || ""),
+    topicIds: Array.isArray(body.topicIds) ? body.topicIds : [],
+    includeHomeNews: Boolean(emailData.includeHomeNews ?? delivery.includeHomeNews)
+  };
+}
+
+function configuredResendSender() {
+  return trimString(process.env.RESEND_FROM_EMAIL);
+}
 
 function sendPage(page) {
   return (_req, res) => res.sendFile(path.join(ROOT_DIR, page));
@@ -183,12 +279,56 @@ async function proxyJsonRequest(url, options, label) {
   return payload;
 }
 
+async function sendResendEmail({ to, subject, html, text }) {
+  const apiKey = trimString(process.env.RESEND_API_KEY);
+  const from = configuredResendSender();
+
+  if (!apiKey) {
+    const error = new Error("RESEND_API_KEY is not configured on the server.");
+    error.status = 503;
+    throw error;
+  }
+
+  if (!from) {
+    const error = new Error("RESEND_FROM_EMAIL is not configured on the server.");
+    error.status = 503;
+    throw error;
+  }
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      from,
+      to,
+      subject,
+      html,
+      text
+    })
+  });
+
+  const payload = await readUpstreamPayload(response);
+  if (!response.ok) {
+    const message = payload?.message
+      || payload?.error
+      || `Resend request failed with status ${response.status}.`;
+    const error = new Error(message);
+    error.status = response.status >= 500 ? 502 : response.status;
+    throw error;
+  }
+
+  return payload;
+}
+
 app.disable("x-powered-by");
 app.use(cors());
 app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key, x-cognesion-admin-bypass");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
   if (req.method === "OPTIONS") return res.status(204).end();
   return next();
 });
@@ -245,6 +385,7 @@ app.get("/api/runtime-status", (req, res) => {
       webTopicsApiLive: true,
       developmentAuthBridge: false,
       webMagicLinkAuthLive: true,
+      webMorningBriefEmailConfigured: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL),
       adminBypassConfigured: Boolean(process.env.ADMIN_BYPASS_TOKEN && process.env.ADMIN_BYPASS_EMAIL)
     },
     nextMilestones: [
@@ -541,23 +682,117 @@ app.delete("/api/topic-boards/:boardId", asyncRoute(async (req, res) => {
   });
 }));
 
-app.get("/api/briefs", (_req, res) => {
-  return res.status(501).json(
-    notLiveResponse(
-      "Morning Brief history",
-      "Add server-side brief generation, persistence, and delivery before exposing brief history."
-    )
-  );
-});
+app.get("/api/delivery-settings", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  const workspace = await getDeliveryWorkspace(user);
+  return res.json({
+    ok: true,
+    authMode: user.authMode || "supabase-session",
+    ...workspace
+  });
+}));
 
-app.post("/api/briefs/generate", (_req, res) => {
-  return res.status(501).json(
-    notLiveResponse(
-      "Morning Brief generation",
-      "Generate briefs on the server so delivery settings, scheduling, and email can work outside the extension."
-    )
-  );
-});
+app.patch("/api/delivery-settings", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  const deliveryPayload = normalizeDeliveryPayload(req.body || {});
+  if (deliveryPayload.recipientEmail && !looksLikeEmail(deliveryPayload.recipientEmail)) {
+    return res.status(400).json({ ok: false, error: "Please enter a valid delivery email address." });
+  }
+
+  const workspace = await saveDeliveryWorkspace(user, deliveryPayload);
+  return res.json({
+    ok: true,
+    authMode: user.authMode || "supabase-session",
+    ...workspace
+  });
+}));
+
+app.get("/api/briefs", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  const result = await listBriefRuns(user, { limit: req.query?.limit });
+  return res.json({
+    ok: true,
+    authMode: user.authMode || "supabase-session",
+    ...result
+  });
+}));
+
+app.post("/api/briefs/generate", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  const briefPayload = normalizeBriefPayload(req.body || {});
+  if (briefPayload.recipientEmail && !looksLikeEmail(briefPayload.recipientEmail)) {
+    return res.status(400).json({ ok: false, error: "Please enter a valid delivery email address." });
+  }
+
+  const delivery = await saveDeliveryWorkspace(user, briefPayload);
+  const result = await createBriefRun(user, {
+    ...briefPayload,
+    status: "queued",
+    deliveryDaysSnapshot: briefPayload.selectedDeliveryDays
+  });
+
+  return res.status(201).json({
+    ok: true,
+    authMode: user.authMode || "supabase-session",
+    delivery,
+    ...result
+  });
+}));
+
+app.post("/api/briefs/send-test", asyncRoute(async (req, res) => {
+  const user = await requireAuthenticatedUser(req);
+  const briefPayload = normalizeBriefPayload(req.body || {});
+  const recipientEmail = briefPayload.recipientEmail || normalizeEmail(user.email);
+  if (!looksLikeEmail(recipientEmail)) {
+    return res.status(400).json({ ok: false, error: "Please enter a valid delivery email address." });
+  }
+
+  const delivery = await saveDeliveryWorkspace(user, {
+    ...briefPayload,
+    recipientEmail
+  });
+
+  try {
+    const providerResponse = await sendResendEmail({
+      to: recipientEmail,
+      subject: briefPayload.subjectLine,
+      html: briefPayload.htmlBody,
+      text: briefPayload.textBody
+    });
+    const result = await createBriefRun(user, {
+      ...briefPayload,
+      status: "sent",
+      deliveryDaysSnapshot: briefPayload.selectedDeliveryDays,
+      sentAt: new Date().toISOString()
+    });
+
+    return res.json({
+      ok: true,
+      authMode: user.authMode || "supabase-session",
+      sent: true,
+      provider: "resend",
+      providerResponse,
+      delivery,
+      ...result
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to send test brief.";
+    const status = Number.isInteger(Number(error?.status)) ? Number(error.status) : 502;
+    const result = await createBriefRun(user, {
+      ...briefPayload,
+      status: "failed",
+      deliveryDaysSnapshot: briefPayload.selectedDeliveryDays,
+      failureReason: message
+    });
+
+    return res.status(status).json({
+      ok: false,
+      error: message,
+      delivery,
+      ...result
+    });
+  }
+}));
 
 app.listen(PORT, () => {
   console.log(`[COGNESION WEB] listening on http://localhost:${PORT}`);

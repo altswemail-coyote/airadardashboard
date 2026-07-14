@@ -71,6 +71,79 @@ function mapBoardRow(row, topics = []) {
   };
 }
 
+function mapDeliverySettingsRow(row) {
+  if (!row) return null;
+  return {
+    userId: row.user_id,
+    briefsPerWeek: row.briefs_per_week,
+    selectedDeliveryDays: row.selected_delivery_days || [],
+    sendHour: row.send_hour,
+    sendMinute: row.send_minute,
+    timezone: row.timezone,
+    includeHomeNews: row.include_home_news,
+    enabled: row.enabled,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapBriefRecipientRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    email: row.email,
+    isPrimary: row.is_primary,
+    verifiedAt: row.verified_at,
+    createdAt: row.created_at
+  };
+}
+
+function mapBriefRunRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    deliveryDaysSnapshot: row.delivery_days_snapshot || [],
+    model: row.model || "",
+    status: row.status,
+    subjectLine: row.subject_line || "",
+    htmlBody: row.html_body || "",
+    textBody: row.text_body || "",
+    includeHomeNews: row.include_home_news,
+    sendScheduledFor: row.send_scheduled_for,
+    sentAt: row.sent_at,
+    failureReason: row.failure_reason || "",
+    createdAt: row.created_at
+  };
+}
+
+function normalizeDeliveryFrequency(value) {
+  const parsed = Number(value);
+  return [1, 3, 5].includes(parsed) ? parsed : 1;
+}
+
+function normalizeDeliveryDays(days, briefsPerWeek = 1) {
+  const allowed = ["mon", "tue", "wed", "thu", "fri"];
+  const limit = normalizeDeliveryFrequency(briefsPerWeek);
+  const cleaned = Array.isArray(days)
+    ? days.map(trimString).filter((day) => allowed.includes(day))
+    : [];
+  const unique = [...new Set(cleaned)];
+  return (unique.length ? unique : allowed).slice(0, limit);
+}
+
+function normalizeInteger(value, fallback, min, max) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function normalizeBriefStatus(value) {
+  const status = trimString(value);
+  return ["queued", "running", "sent", "failed"].includes(status) ? status : "queued";
+}
+
 export function getSupabaseConfigStatus() {
   return {
     urlConfigured: Boolean(SUPABASE_URL),
@@ -570,6 +643,174 @@ export async function deleteTopic(topicId, user) {
   }
 
   return { user, deletedTopicId: topicId };
+}
+
+export async function getDeliveryWorkspace(user) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  const [settingsQuery, recipientsQuery] = await Promise.all([
+    supabase
+      .from("delivery_settings")
+      .select("*")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("brief_recipients")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("is_primary", { ascending: false })
+      .order("created_at", { ascending: true })
+  ]);
+
+  if (settingsQuery.error) {
+    throw new Error(`Unable to load delivery settings: ${settingsQuery.error.message}`);
+  }
+
+  if (recipientsQuery.error) {
+    throw new Error(`Unable to load brief recipients: ${recipientsQuery.error.message}`);
+  }
+
+  return {
+    user,
+    settings: mapDeliverySettingsRow(settingsQuery.data),
+    recipients: (recipientsQuery.data || []).map(mapBriefRecipientRow).filter(Boolean)
+  };
+}
+
+export async function saveDeliveryWorkspace(user, payload = {}) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  const briefsPerWeek = normalizeDeliveryFrequency(payload.briefsPerWeek);
+  const selectedDeliveryDays = normalizeDeliveryDays(payload.selectedDeliveryDays, briefsPerWeek);
+  const settingsPayload = {
+    user_id: user.id,
+    briefs_per_week: briefsPerWeek,
+    selected_delivery_days: selectedDeliveryDays,
+    send_hour: normalizeInteger(payload.sendHour, 7, 0, 23),
+    send_minute: normalizeInteger(payload.sendMinute, 0, 0, 59),
+    timezone: trimString(payload.timezone) || "America/Chicago",
+    include_home_news: Boolean(payload.includeHomeNews),
+    enabled: payload.enabled !== false
+  };
+
+  const settingsQuery = await supabase
+    .from("delivery_settings")
+    .upsert(settingsPayload, { onConflict: "user_id" });
+
+  if (settingsQuery.error) {
+    throw new Error(`Unable to save delivery settings: ${settingsQuery.error.message}`);
+  }
+
+  const recipientEmail = trimString(payload.recipientEmail).toLowerCase();
+  if (recipientEmail) {
+    const resetPrimary = await supabase
+      .from("brief_recipients")
+      .update({ is_primary: false })
+      .eq("user_id", user.id);
+
+    if (resetPrimary.error) {
+      throw new Error(`Unable to update brief recipients: ${resetPrimary.error.message}`);
+    }
+
+    const recipientQuery = await supabase
+      .from("brief_recipients")
+      .upsert(
+        {
+          user_id: user.id,
+          email: recipientEmail,
+          is_primary: true
+        },
+        { onConflict: "user_id,email" }
+      );
+
+    if (recipientQuery.error) {
+      throw new Error(`Unable to save brief recipient: ${recipientQuery.error.message}`);
+    }
+  }
+
+  return getDeliveryWorkspace(user);
+}
+
+export async function createBriefRun(user, payload = {}) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  const status = normalizeBriefStatus(payload.status);
+  const insertPayload = {
+    user_id: user.id,
+    delivery_days_snapshot: normalizeDeliveryDays(payload.deliveryDaysSnapshot || payload.selectedDeliveryDays, payload.briefsPerWeek || 1),
+    model: trimString(payload.model),
+    status,
+    subject_line: trimString(payload.subjectLine),
+    html_body: trimString(payload.htmlBody),
+    text_body: trimString(payload.textBody),
+    include_home_news: Boolean(payload.includeHomeNews),
+    send_scheduled_for: payload.sendScheduledFor || null,
+    sent_at: status === "sent" ? (payload.sentAt || new Date().toISOString()) : null,
+    failure_reason: status === "failed" ? trimString(payload.failureReason) : ""
+  };
+
+  const runQuery = await supabase
+    .from("brief_runs")
+    .insert(insertPayload)
+    .select("*")
+    .single();
+
+  if (runQuery.error) {
+    throw new Error(`Unable to create brief run: ${runQuery.error.message}`);
+  }
+
+  const topicIds = Array.isArray(payload.topicIds)
+    ? payload.topicIds.map(trimString).filter(Boolean)
+    : [];
+
+  if (topicIds.length) {
+    const topicRows = [...new Set(topicIds)].map((topicId) => ({
+      brief_run_id: runQuery.data.id,
+      topic_id: topicId
+    }));
+    const topicsQuery = await supabase.from("brief_run_topics").insert(topicRows);
+    if (topicsQuery.error) {
+      throw new Error(`Unable to link brief topics: ${topicsQuery.error.message}`);
+    }
+  }
+
+  return {
+    user,
+    brief: mapBriefRunRow(runQuery.data)
+  };
+}
+
+export async function listBriefRuns(user, { limit = 20 } = {}) {
+  const supabase = createSupabaseAdminClient();
+  if (!supabase) {
+    throw new Error("Supabase admin client is not configured.");
+  }
+
+  const safeLimit = normalizeInteger(limit, 20, 1, 50);
+  const runsQuery = await supabase
+    .from("brief_runs")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+
+  if (runsQuery.error) {
+    throw new Error(`Unable to load brief runs: ${runsQuery.error.message}`);
+  }
+
+  return {
+    user,
+    briefs: (runsQuery.data || []).map(mapBriefRunRow).filter(Boolean)
+  };
 }
 
 export async function checkSupabaseConnection() {
